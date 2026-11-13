@@ -173,3 +173,12 @@ Sécurité : toutes les actions passent par des fonctions Supabase `admin_*` qui
 - Moteur d’analyse intégré (`src/pages/admin/assistant-engine.ts`) : fonctionne partout, y compris dans l’aperçu hors ligne.
 - IA générative (sur le vrai site) : fonction Supabase `assistant-gerant` (réservée aux gérants). Elle s’active dès qu’une clé est ajoutée dans Supabase → Edge Functions → Secrets : `OPENAI_API_KEY` (modèle `OPENAI_MODEL`, par défaut gpt-4o-mini) **ou** `GEMINI_API_KEY` (modèle `GEMINI_MODEL`, par défaut gemini-2.5-flash). Sans clé, le site utilise automatiquement le moteur intégré.
 
+
+## Sécurité des commandes (calcul côté serveur)
+Depuis la migration `orders_server_side_totals`, le trigger `orders_before_insert` **ignore les montants envoyés par le navigateur** :
+- prix et noms relus dans `catalog_products` (produit inexistant ou retiré → refus `PRODUCT_UNAVAILABLE`) ;
+- quantités 1 à 99 (`INVALID_QTY`), stock vérifié et verrouillé (`OUT_OF_STOCK`) ;
+- codes promo validés en base (`YVES10` −10 %, `BIENVENUE` −5 000 FCFA dès 30 000) dans la colonne `promo_code` ;
+- livraison recalculée (Abidjan 2 000, intérieur 3 500, retrait 0, offerte dès 50 000 après remise) ;
+- sous-total, remise, livraison et total réécrits par le serveur.
+Si vous changez les frais ou les codes promo dans `src/lib/format.ts`, changez aussi la fonction `orders_before_insert`.

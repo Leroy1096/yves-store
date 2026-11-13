@@ -302,7 +302,7 @@ class Query {
   private filters: ((r: Row) => boolean)[] = []
   private ord: { col: string; asc: boolean } | null = null
   private lim = 0
-  private single: '' | 'maybe' | 'one' = ''
+  private card: '' | 'maybe' | 'one' = ''
   private head = false
   private wantCount = false
   private op: 'select' | 'insert' | 'update' | 'delete' = 'select'
@@ -315,8 +315,8 @@ class Query {
   gte(col: string, v: any) { this.filters.push((r) => r[col] >= v); return this }
   order(col: string, o?: { ascending?: boolean }) { this.ord = { col, asc: o?.ascending !== false }; return this }
   limit(n: number) { this.lim = n; return this }
-  maybeSingle() { this.single = 'maybe'; return this }
-  single_() { this.single = 'one'; return this }
+  maybeSingle() { this.card = 'maybe'; return this }
+  single() { this.card = 'one'; return this }
   insert(p: Row) { this.op = 'insert'; this.payload = p; return this }
   update(p: Row) { this.op = 'update'; this.payload = p; return this }
   delete() { this.op = 'delete'; return this }
@@ -338,13 +338,27 @@ class Query {
       const o = { status: 'confirmee', cancelled_at: null, cancel_reason: null, created_at: iso(), ...this.payload } as Row
       // Commande réservée aux clients inscrits et connectés
       if (!uid() || o.user_id !== uid()) return fail('new row violates row-level security policy')
+      // Comme le serveur : prix, remise, livraison et total recalculés, stock vérifié
+      if (!['abidjan', 'interieur', 'retrait'].includes(o.shipping)) return fail('INVALID_SHIPPING')
+      const lines: Row[] = []; let sub = 0; const need = new Map<string, number>()
+      for (const l of (o.lines ?? []) as Row[]) {
+        const q = Number(l.qty); if (!Number.isInteger(q) || q < 1 || q > 99) return fail('INVALID_QTY')
+        const c = db.catalog_products.find((x) => x.id === l.id); if (!c || !c.active) return fail(`PRODUCT_UNAVAILABLE|${c?.name ?? l.name ?? l.id}`)
+        lines.push({ ...l, name: c.name, price: c.price, qty: q }); sub += c.price * q; need.set(c.id, (need.get(c.id) ?? 0) + q)
+      }
+      if (!lines.length) return fail('EMPTY_CART')
+      for (const [id, q] of need) { const c = db.catalog_products.find((x) => x.id === id)!; if (c.stock < q) return fail(`OUT_OF_STOCK|${c.name}|${c.stock}`) }
+      const code = String(o.promo_code ?? '').trim().toUpperCase()
+      const disc = code === 'YVES10' ? Math.round(sub * 0.1) : code === 'BIENVENUE' && sub >= 30000 ? 5000 : 0
+      const ship = o.shipping === 'retrait' || sub - disc >= 50000 ? 0 : o.shipping === 'abidjan' ? 2000 : 3500
+      Object.assign(o, { lines, subtotal: sub, discount: disc, shipping_cost: ship, total: Math.max(0, sub - disc + ship), promo_code: disc ? code : null })
       db.orders.push(o)
       for (const l of o.lines ?? []) {
         const c = db.catalog_products.find((x) => x.id === l.id); if (!c) continue
         c.stock = Math.max(0, c.stock - l.qty)
         db.stock_movements.push({ id: db.seq++, product_id: c.id, kind: 'vente', qty: -l.qty, stock_after: c.stock, note: `Commande ${o.id}`, order_id: o.id, created_by: null, created_at: iso() })
       }
-      save(); return ok(null)
+      save(); return ok(this.card ? o : null)
     }
     let rows = this.visible(db).filter((r) => this.filters.every((f) => f(r)))
     if (this.op === 'update') {
@@ -356,7 +370,7 @@ class Query {
     if (this.lim) rows = rows.slice(0, this.lim)
     const out = JSON.parse(JSON.stringify(rows))
     if (this.head) return Promise.resolve({ data: null, error: null, count: out.length })
-    if (this.single) return ok(out[0] ?? null)
+    if (this.card) return ok(out[0] ?? null)
     return Promise.resolve({ data: out, error: null, count: this.wantCount ? out.length : null })
   }
 }

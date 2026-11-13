@@ -20,6 +20,16 @@ const PAYMENTS = [
   { id: 'moov', label: 'Moov Money', sub: 'Flooz — confirmation par code', color: '#0066B3', mm: true },
   { id: 'card', label: 'Carte bancaire', sub: 'Visa, Mastercard — 3D Secure', color: '#1A1F71', mm: false },
 ]
+/** Messages clairs pour les refus du serveur (stock, produit retiré, session…) */
+function orderErrorMessage(msg: string) {
+  const [code, name, left] = msg.split('|')
+  if (code.includes('OUT_OF_STOCK')) return Number(left) > 0 ? `Stock insuffisant pour « ${name} » : ${Number(left) === 1 ? 'il n’en reste qu’un seul' : `il n’en reste que ${left}`}. Modifiez la quantité dans votre panier.` : `« ${name} » vient d’être épuisé. Retirez-le de votre panier pour continuer.`
+  if (code.includes('PRODUCT_UNAVAILABLE')) return `« ${name} » n’est plus disponible. Retirez-le de votre panier pour continuer.`
+  if (code.includes('INVALID_QTY')) return 'Une quantité de votre panier est invalide (1 à 99 par article).'
+  if (code.includes('INVALID_SHIPPING')) return 'Mode de livraison invalide. Choisissez-en un à nouveau.'
+  if (/jwt|auth|permission|row-level|policy/i.test(msg)) return 'Votre session a expiré. Reconnectez-vous pour valider la commande.'
+  return 'La commande n’a pas pu être enregistrée. Vérifiez votre connexion puis réessayez.'
+}
 const phoneOk = (v: string) => /^(\+?225)?\s?(01|05|07|27|25|21)\d{8}$/.test(v.replace(/[\s.-]/g, ''))
 
 function Field({ id, label, value, error, onValue, format, ...rest }: { id: string; label: string; value: string; error?: string; onValue: (v: string) => void; format?: (v: string) => string } & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'id'>) {
@@ -139,14 +149,20 @@ export default function Checkout() {
     // Seuls les clients inscrits et connectés peuvent commander (vérifié aussi par le serveur)
     if (!user) { setProcessing(false); nav('/compte?redirect=/commande&raison=commande'); return }
     setPlaceErr('')
-    const { error } = await supabase.from('orders').insert({
+    // Le serveur recalcule prix, remise, livraison et total, et vérifie le stock
+    const { data: saved, error } = await supabase.from('orders').insert({
       id: order.id, user_id: user.id, customer: order.customer, address: order.address, shipping: order.shipping, payment: order.payment,
-      lines: order.lines, subtotal, discount, shipping_cost: shippingCost, total,
-    })
+      lines: order.lines, subtotal, discount, shipping_cost: shippingCost, total, promo_code: promo || null,
+    }).select('lines, subtotal, discount, shipping_cost, total').single()
     if (error) {
       setProcessing(false)
-      setPlaceErr(/jwt|auth|permission|row-level|policy/i.test(error.message) ? 'Votre session a expiré. Reconnectez-vous pour valider la commande.' : 'La commande n’a pas pu être enregistrée. Vérifiez votre connexion puis réessayez.')
+      setPlaceErr(orderErrorMessage(error.message))
       return
+    }
+    if (saved) {
+      const sl = (saved.lines ?? []) as { name: string; qty: number; price: number }[]
+      order.lines = order.lines.map((l, i) => (sl[i] ? { ...l, name: sl[i].name, qty: sl[i].qty, price: sl[i].price } : l))
+      order.subtotal = saved.subtotal; order.discount = saved.discount; order.shippingCost = saved.shipping_cost; order.total = saved.total
     }
     {
       if (profile && !profile.address && order.address.details) useAuth.getState().updateProfile({ address: order.address.details, city: f.city, commune: f.city === 'Abidjan' ? f.commune : null })
