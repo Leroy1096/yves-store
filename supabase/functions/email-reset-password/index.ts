@@ -16,7 +16,8 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 
 const BREVO = Deno.env.get('BREVO_API_KEY')
 const RESEND = Deno.env.get('RESEND_API_KEY')
-const SENDER = Deno.env.get('BREVO_SENDER') || Deno.env.get('RESEND_FROM') || 'yvesstore1@gmail.com'
+// Resend : sans domaine vérifié, seule l'adresse de test onboarding@resend.dev est autorisée
+const SENDER = BREVO ? (Deno.env.get('BREVO_SENDER') || 'yvesstore1@gmail.com') : (Deno.env.get('RESEND_FROM') || 'onboarding@resend.dev')
 const NOTIFY = Deno.env.get('NOTIFY_EMAIL') || 'yvesstore1@gmail.com'
 
 async function sendMail(to: string, toName: string, subject: string, html: string, text: string): Promise<{ ok: boolean; error?: string }> {
