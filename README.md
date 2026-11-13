@@ -198,3 +198,10 @@ Si vous changez les frais ou les codes promo dans `src/lib/format.ts`, changez a
 - **Gérant informé** : e-mail « 🔑 Mot de passe réinitialisé » (`NOTIFY_EMAIL`, par défaut yvesstore1@gmail.com) + onglet **Messages WhatsApp → 🔑 Mots de passe** + Assistant IA (« Rapport mots de passe »).
 - **Journal** `password_reset_log` (lecture gérant uniquement) : prénom + initiale, canal, événement, heure. **Jamais de code ni de mot de passe.**
 - Le flux WhatsApp semi-automatique (code à 6 chiffres, 30 min, 5 essais) reste inchangé et alimente aussi le journal (trigger `whatsapp_reset_log`).
+
+## Alertes e-mail au gérant (Resend)
+
+- À chaque **nouvelle commande**, **annulation**, **demande client** (Messages WhatsApp) et **nouvelle inscription**, la base appelle la fonction `notify-gerant` (triggers + `pg_net`) qui envoie un e-mail à `NOTIFY_EMAIL` (par défaut yvesstore1@gmail.com).
+- Sécurité : en-tête secret `x-notify-secret` (Vault `notify_webhook_secret` ↔ secret `NOTIFY_WEBHOOK_SECRET`). La fonction relit elle-même l'enregistrement ; jamais de code ni de mot de passe dans les e-mails ; prénom + initiale.
+- Une alerte ne bloque jamais une commande (erreurs ignorées côté trigger). Migration : `supabase/migrations/gerant_email_alerts.sql`.
+- Clé utilisée : Resend « Sending access » (`RESEND_API_KEY`). La clé « Full access » n'est pas nécessaire.
