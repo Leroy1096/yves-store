@@ -1,8 +1,10 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowUp, Check, Copy, Gift, X } from 'lucide-react'
+import { ArrowUp, Check, ChevronRight, Copy, Gift, MessageCircle, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { WA_WELCOME_LINK } from '../lib/contact'
+import { Link, useLocation } from 'react-router-dom'
+import { getProduct } from '../data/products'
+import { PHONE_DISPLAY, WA_TOPICS, waClientMessage, waLink, type WaTopic } from '../lib/contact'
+import { fcfa } from '../lib/format'
 import { cn } from '../lib/format'
 import { useAuth } from '../store/auth'
 import { Social } from './ui'
@@ -40,6 +42,67 @@ export function CouponTicket({ c, dark = false }: { c: (typeof coupons)[number];
   )
 }
 
+/** Bouton WhatsApp : le client choisit sa demande, le message part pré-rempli à son nom */
+function WhatsAppMenu() {
+  const [open, setOpen] = useState(false)
+  const profile = useAuth((s) => s.profile)
+  const { pathname } = useLocation()
+  useEffect(() => { setOpen(false) }, [pathname])
+  useEffect(() => {
+    if (!open) return
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k)
+  }, [open])
+  const slug = pathname.match(/^\/produit\/([^/?#]+)/)?.[1]
+  const prod = slug ? getProduct(decodeURIComponent(slug)) : undefined
+  const ctx = {
+    name: profile ? `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() || undefined : undefined,
+    product: prod ? `${prod.name} — ${fcfa(prod.price)}` : undefined,
+  }
+  const href = (t?: WaTopic) => waLink(waClientMessage(t, { ...ctx, product: !t || t.id === 'achat' ? ctx.product : undefined }))
+  const Item = ({ t }: { t: WaTopic }) => (
+    <a href={href(t)} target="_blank" rel="noopener noreferrer" onClick={() => setOpen(false)} data-testid={`wa-topic-${t.id}`}
+      className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] font-medium text-ink transition hover:bg-[#25D366]/10">
+      <span className="text-base leading-none">{t.emoji}</span><span className="flex-1">{t.label}</span><ChevronRight size={14} className="text-ink-300" />
+    </a>
+  )
+  return (
+    <div className="relative">
+      <AnimatePresence>
+        {open && (
+          <>
+            <button aria-label="Fermer" className="fixed inset-0 z-0 cursor-default" onClick={() => setOpen(false)} />
+            <motion.div role="dialog" aria-label="Écrire à YVES STORE sur WhatsApp" data-testid="wa-menu"
+              initial={{ opacity: 0, y: 12, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 12, scale: 0.96 }} transition={{ duration: 0.18 }}
+              className="absolute bottom-14 right-0 z-10 w-[min(320px,calc(100vw-24px))] origin-bottom-right overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-ink/10">
+              <div className="flex items-center gap-3 bg-[#075E54] px-4 py-3 text-white">
+                <span className="grid h-9 w-9 place-items-center rounded-full bg-white/15"><Social.WhatsApp size={18} /></span>
+                <div className="min-w-0 flex-1"><p className="text-sm font-bold">YVES STORE</p><p className="truncate text-[11px] text-white/75">Choisissez votre demande · {PHONE_DISPLAY}</p></div>
+                <button onClick={() => setOpen(false)} aria-label="Fermer" className="p-1 text-white/70 hover:text-white"><X size={16} /></button>
+              </div>
+              <div className="max-h-[60vh] overflow-y-auto p-2">
+                <p className="px-3 pb-1 pt-2 text-[11px] font-bold uppercase tracking-[0.12em] text-ink-400">🛒 1. J’ai un besoin</p>
+                {WA_TOPICS.filter((t) => t.group === 'besoin').map((t) => <Item key={t.id} t={t} />)}
+                <p className="px-3 pb-1 pt-3 text-[11px] font-bold uppercase tracking-[0.12em] text-ink-400">🛠️ 2. J’ai un problème</p>
+                {WA_TOPICS.filter((t) => t.group === 'probleme').map((t) => <Item key={t.id} t={t} />)}
+                <a href={href()} target="_blank" rel="noopener noreferrer" onClick={() => setOpen(false)} data-testid="wa-topic-autre"
+                  className="mt-2 flex items-center justify-center gap-2 rounded-xl bg-[#25D366] px-3 py-2.5 text-[13px] font-bold text-white hover:bg-[#1ebe5a]">
+                  <MessageCircle size={15} /> Autre demande
+                </a>
+              </div>
+              <p className="border-t border-ink/5 px-4 py-2 text-center text-[10.5px] text-ink-400">WhatsApp s’ouvre avec votre message prêt : complétez-le puis appuyez sur Envoyer.</p>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+      <button onClick={() => setOpen((v) => !v)} aria-label="Écrire à YVES STORE sur WhatsApp" aria-expanded={open} title="Écrivez-nous sur WhatsApp" data-testid="wa-fab"
+        className="relative z-10 grid h-12 w-12 place-items-center rounded-full bg-[#25D366] text-white shadow-xl shadow-black/15 transition hover:scale-110">
+        {open ? <X size={22} /> : <Social.WhatsApp size={24} />}
+      </button>
+    </div>
+  )
+}
+
 /** Widgets flottants : cadeau de bienvenue, WhatsApp, retour en haut, invitation à se connecter */
 export default function Floating({ raised = false, bottomNav = false }: { raised?: boolean; bottomNav?: boolean }) {
   const user = useAuth((s) => s.user)
@@ -71,9 +134,7 @@ export default function Floating({ raised = false, bottomNav = false }: { raised
             <span className="absolute -right-1 -top-1 rounded-full bg-ink px-1.5 py-0.5 text-[8px] font-black text-gold-light">-5K</span>
           </motion.button>
         )}
-        <a href={WA_WELCOME_LINK} target="_blank" rel="noopener noreferrer" aria-label="Écrire à YVES STORE sur WhatsApp" title="Écrivez-nous sur WhatsApp" className="grid h-12 w-12 place-items-center rounded-full bg-[#25D366] text-white shadow-xl shadow-black/15 transition hover:scale-110">
-          <Social.WhatsApp size={24} />
-        </a>
+        <WhatsAppMenu />
         <AnimatePresence>
           {top && (
             <motion.button initial={{ opacity: 0, scale: 0.6 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.6 }} onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} aria-label="Revenir en haut" className="grid h-11 w-11 place-items-center rounded-full border border-ink/10 bg-white text-ink shadow-lg hover:bg-ink hover:text-ivory">

@@ -1,6 +1,6 @@
 import { MapPin, Phone, Mail, Clock } from 'lucide-react'
 import { useState } from 'react'
-import { PHONE_DISPLAY, PHONE_TEL, WA_WELCOME_LINK } from '../lib/contact'
+import { PHONE_DISPLAY, PHONE_TEL, WA_CLIENT_LINK } from '../lib/contact'
 import { Link } from 'react-router-dom'
 import { categories } from '../data/products'
 import { Logo, PaymentBadges, Social } from './ui'
@@ -35,7 +35,7 @@ export default function Footer() {
             {[Social.Instagram, Social.Facebook, Social.TikTok].map((I, i) => (
               <a key={i} href="#" className="grid h-10 w-10 place-items-center rounded-full border border-ivory/15 text-ivory/80 transition hover:border-gold hover:text-gold" aria-label="Réseau social"><I /></a>
             ))}
-            <a href={WA_WELCOME_LINK} target="_blank" rel="noopener noreferrer" className="grid h-10 w-10 place-items-center rounded-full border border-[#25D366]/60 text-[#25D366] transition hover:bg-[#25D366] hover:text-white" aria-label="WhatsApp YVES STORE"><Social.WhatsApp /></a>
+            <a href={WA_CLIENT_LINK} target="_blank" rel="noopener noreferrer" className="grid h-10 w-10 place-items-center rounded-full border border-[#25D366]/60 text-[#25D366] transition hover:bg-[#25D366] hover:text-white" aria-label="WhatsApp YVES STORE"><Social.WhatsApp /></a>
           </div>
         </div>
         <div>
@@ -54,7 +54,7 @@ export default function Footer() {
           <p className="eyebrow mb-4">Nous trouver</p>
           <ul className="space-y-3 text-sm text-ivory/70">
             <li className="flex gap-3"><MapPin size={16} className="mt-0.5 shrink-0 text-gold" />Boulevard principal, Agboville<br />& Riviera 2, Cocody — Abidjan</li>
-            <li className="flex gap-3"><Phone size={16} className="mt-0.5 shrink-0 text-gold" /><a href={`tel:${PHONE_TEL}`} className="hover:text-gold-light">{PHONE_DISPLAY}</a> · <a href={WA_WELCOME_LINK} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#25D366] hover:underline">WhatsApp</a></li>
+            <li className="flex gap-3"><Phone size={16} className="mt-0.5 shrink-0 text-gold" /><a href={`tel:${PHONE_TEL}`} className="hover:text-gold-light">{PHONE_DISPLAY}</a> · <a href={WA_CLIENT_LINK} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#25D366] hover:underline">WhatsApp</a></li>
             <li className="flex gap-3"><Mail size={16} className="mt-0.5 shrink-0 text-gold" />contact@yvesstore.ci</li>
             <li className="flex gap-3"><Clock size={16} className="mt-0.5 shrink-0 text-gold" />Lun – Sam : 8 h – 20 h</li>
           </ul>
