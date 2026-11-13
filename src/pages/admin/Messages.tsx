@@ -1,17 +1,18 @@
-import { Check, Clock, KeyRound, Loader2, Package, RefreshCw, Trash2, XCircle } from 'lucide-react'
+import { Check, Clock, KeyRound, Loader2, Mail, ShieldCheck, Package, RefreshCw, Trash2, XCircle } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Social } from '../../components/ui'
 import { formatPhone } from '../../lib/auth-utils'
 import { cn } from '../../lib/format'
 import { supabase } from '../../lib/supabase'
 import { clientWaLink, KIND_FR, ORDER_STATUS_FR, orderMessage, resetMessage, type WaRequest } from '../../lib/whatsapp'
-import { PageHead } from './shared'
+import { fetchResetLog, PageHead, RESET_CHANNEL_FR, RESET_EVENT_FR, type ResetLog } from './shared'
 
-type Tab = 'en_attente' | 'envoye' | 'tout'
+type Tab = 'en_attente' | 'envoye' | 'tout' | 'journal'
 const TABS: { id: Tab; label: string }[] = [
   { id: 'en_attente', label: 'À envoyer' },
   { id: 'envoye', label: 'Envoyés' },
   { id: 'tout', label: 'Tout' },
+  { id: 'journal', label: '🔑 Mots de passe' },
 ]
 const KIND_STYLE: Record<string, string> = {
   reset_password: 'bg-amber-50 text-amber-800',
@@ -120,6 +121,50 @@ function RequestCard({ r, onChanged }: { r: WaRequest; onChanged: (patch: Partia
   )
 }
 
+const EV_STYLE: Record<ResetLog['event'], string> = {
+  demande: 'bg-ink/5 text-ink-600', envoye: 'bg-sky-50 text-sky-800', reussi: 'bg-emerald-100 text-emerald-800', echec: 'bg-amber-100 text-amber-800', limite: 'bg-red-100 text-red-700',
+}
+const fmtWhen = (d: string) => new Date(d).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+
+/** Journal « mot de passe oublié » : qui, quand, par quel canal, résultat — jamais de code ni de mot de passe */
+function ResetJournal({ rows }: { rows: ResetLog[] | null }) {
+  if (rows === null) return <Loader2 className="animate-spin text-gold" />
+  const month = rows.filter((r) => Date.now() - new Date(r.created_at).getTime() < 30 * 86400000)
+  const n = (ev: ResetLog['event'], ch?: ResetLog['channel']) => month.filter((r) => r.event === ev && (!ch || r.channel === ch)).length
+  const stats = [
+    { l: 'Demandes', v: n('demande'), s: `${n('demande', 'email')} e-mail · ${n('demande', 'whatsapp')} WhatsApp` },
+    { l: 'Liens e-mail automatiques', v: n('envoye', 'email'), s: 'envoyés sans intervention' },
+    { l: 'Réinitialisés', v: n('reussi'), s: `${n('reussi', 'email')} e-mail · ${n('reussi', 'whatsapp')} WhatsApp` },
+    { l: 'Alertes', v: n('echec') + n('limite'), s: `${n('echec')} code faux · ${n('limite')} bloquée(s)` },
+  ]
+  return (
+    <div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {stats.map((x) => (
+          <div key={x.l} className="rounded-2xl bg-white p-4"><p className="text-xs font-semibold uppercase tracking-[0.1em] text-ink-400">{x.l}</p><p className="mt-1 font-display text-3xl">{x.v}</p><p className="text-xs text-ink-500">{x.s}</p></div>
+        ))}
+      </div>
+      <p className="mt-2 text-xs text-ink-400">30 derniers jours.</p>
+      <div className="mt-4 overflow-hidden rounded-3xl bg-white">
+        {rows.length === 0 ? <p className="px-6 py-14 text-center text-sm text-ink-500">Aucune demande de réinitialisation pour le moment.</p> : (
+          <ul className="divide-y divide-ink/5">
+            {rows.slice(0, 120).map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3 text-sm">
+                <span className="w-28 shrink-0 text-xs tabular-nums text-ink-400">{fmtWhen(r.created_at)}</span>
+                <span className="min-w-[7rem] font-semibold">{r.customer_name ?? 'Client'}</span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-ivory-200 px-2 py-0.5 text-xs">{r.channel === 'email' ? <Mail size={12} /> : <Social.WhatsApp size={12} />}{RESET_CHANNEL_FR[r.channel]}</span>
+                <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', EV_STYLE[r.event])}>{RESET_EVENT_FR[r.event]}</span>
+                {r.detail && <span className="text-xs text-ink-500">{r.detail}</span>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <p className="mt-4 flex items-start gap-2 text-xs text-ink-500"><ShieldCheck size={15} className="mt-px shrink-0 text-emerald-700" /> Les codes et mots de passe ne sont jamais enregistrés dans ce journal. Les liens par e-mail partent automatiquement (valables 1 heure) ; vous recevez un e-mail « 🔑 Mot de passe réinitialisé » à chaque réinitialisation par e-mail.</p>
+    </div>
+  )
+}
+
 export default function Messages({ onChange }: { onChange?: () => void }) {
   const [rows, setRows] = useState<WaRequest[] | null>(null)
   const [tab, setTabRaw] = useState<Tab>('en_attente')
@@ -127,9 +172,11 @@ export default function Messages({ onChange }: { onChange?: () => void }) {
   const [touched, setTouched] = useState<string[]>([])
   const setTab = (t: Tab) => { setTabRaw(t); setTouched([]) }
   const [loading, setLoading] = useState(false)
+  const [journal, setJournal] = useState<ResetLog[] | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
+    void fetchResetLog().then(setJournal).catch(() => setJournal([]))
     const { data } = await supabase.from('whatsapp_requests')
       .select('id,kind,user_id,phone,customer_name,order_id,payload,status,code_expires_at,created_at,sent_at')
       .order('created_at', { ascending: false }).limit(200)
@@ -142,7 +189,7 @@ export default function Messages({ onChange }: { onChange?: () => void }) {
     return () => clearInterval(t)
   }, [load])
 
-  const counts = { en_attente: 0, envoye: 0, tout: rows?.length ?? 0 }
+  const counts = { en_attente: 0, envoye: 0, tout: rows?.length ?? 0, journal: (journal ?? []).filter((r) => r.event === 'reussi' && Date.now() - new Date(r.created_at).getTime() < 30 * 86400000).length }
   rows?.forEach((r) => { if (r.status === 'en_attente') counts.en_attente++; if (r.status === 'envoye') counts.envoye++ })
   const list = (rows ?? []).filter((r) => tab === 'tout' || r.status === tab || touched.includes(r.id))
   const patch = (id: string) => (p: Partial<WaRequest>) => {
@@ -163,7 +210,7 @@ export default function Messages({ onChange }: { onChange?: () => void }) {
         ))}
       </div>
       <div className="mt-5 space-y-4">
-        {rows === null ? <Loader2 className="animate-spin text-gold" /> : list.length === 0 ? (
+        {tab === 'journal' ? <ResetJournal rows={journal} /> : rows === null ? <Loader2 className="animate-spin text-gold" /> : list.length === 0 ? (
           <div className="rounded-3xl border border-dashed border-ink/20 px-6 py-14 text-center text-sm text-ink-500">Aucune demande {tab === 'en_attente' ? 'en attente' : tab === 'envoye' ? 'envoyée' : ''} pour le moment. 🎉</div>
         ) : list.map((r) => <RequestCard key={r.id} r={r} onChanged={patch(r.id)} />)}
       </div>

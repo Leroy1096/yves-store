@@ -191,3 +191,10 @@ Si vous changez les frais ou les codes promo dans `src/lib/format.ts`, changez a
 - Si Gemini est indisponible, le moteur d'analyse intégré répond (questions « audit », « clients », ventes, stock…).
 - Les réponses Gemini portent le badge « ✨ Gemini ». L'IA ne modifie aucune donnée : elle propose, le gérant valide dans le back-office.
 - Changer de clé : Supabase → Edge Functions → Secrets → `GEMINI_API_KEY`.
+
+## Mot de passe oublié — e-mail automatique + rapport gérant
+
+- **Lien par e-mail (automatique)** : fonction Supabase `email-reset-password` (lien de récupération Supabase valable 1 h, 3 demandes / heure, réponse neutre si le compte n'existe pas). Envoi via **Brevo** (`BREVO_API_KEY` + `BREVO_SENDER`) ou **Resend** (`RESEND_API_KEY` + `RESEND_FROM`). Sans clé : repli sur l'envoi Supabase par défaut.
+- **Gérant informé** : e-mail « 🔑 Mot de passe réinitialisé » (`NOTIFY_EMAIL`, par défaut yvesstore1@gmail.com) + onglet **Messages WhatsApp → 🔑 Mots de passe** + Assistant IA (« Rapport mots de passe »).
+- **Journal** `password_reset_log` (lecture gérant uniquement) : prénom + initiale, canal, événement, heure. **Jamais de code ni de mot de passe.**
+- Le flux WhatsApp semi-automatique (code à 6 chiffres, 30 min, 5 essais) reste inchangé et alimente aussi le journal (trigger `whatsapp_reset_log`).

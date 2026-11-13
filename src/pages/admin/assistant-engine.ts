@@ -5,9 +5,9 @@
  * Sert aussi à préparer le « contexte chiffré » envoyé à l’IA générative (si elle est activée).
  */
 import { fcfa } from '../../lib/format'
-import { CATEGORY_FR, type AdminOrder, type CatalogRow, type Client, type Movement } from './shared'
+import { CATEGORY_FR, RESET_CHANNEL_FR, RESET_EVENT_FR, type AdminOrder, type CatalogRow, type Client, type Movement, type ResetLog } from './shared'
 
-export interface AssistantData { orders: AdminOrder[]; catalog: CatalogRow[]; moves: Movement[]; clients: Client[] }
+export interface AssistantData { orders: AdminOrder[]; catalog: CatalogRow[]; moves: Movement[]; clients: Client[]; resets?: ResetLog[] }
 export interface Action { label: string; to: string }
 export interface Reply { text: string; actions?: Action[]; chips?: string[] }
 
@@ -428,8 +428,41 @@ function payments(q: string, d: AssistantData): Reply {
   }
 }
 
+// ───────────── Mots de passe oubliés (journal — jamais de code ni de mot de passe) ─────────────
+const EV_ICON: Record<string, string> = { demande: '📩', envoye: '📤', reussi: '✅', echec: '⚠️', limite: '⛔' }
+function resetStats(d: AssistantData, days = 30) {
+  const from = Date.now() - days * DAY; const rows = (d.resets ?? []).filter((r) => t(r.created_at) >= from)
+  const c = (ev: string, ch?: string) => rows.filter((r) => r.event === ev && (!ch || r.channel === ch)).length
+  // Demandes WhatsApp encore sans code envoyé (dernier événement = « demande »)
+  const last = new Map<string, ResetLog>(); for (const r of [...(d.resets ?? [])].reverse()) if (r.channel === 'whatsapp' && r.user_id) last.set(r.user_id, r)
+  const waiting = [...last.values()].filter((r) => r.event === 'demande' && Date.now() - t(r.created_at) < DAY)
+  const fails = new Map<string, number>(); rows.filter((r) => r.event === 'echec').forEach((r) => fails.set(r.customer_name ?? 'Client', (fails.get(r.customer_name ?? 'Client') ?? 0) + 1))
+  return { rows, c, waiting, limits: rows.filter((r) => r.event === 'limite'), manyFails: [...fails.entries()].filter(([, n]) => n >= 3) }
+}
+function passwords(d: AssistantData): Reply {
+  const { rows, c, waiting, limits, manyFails } = resetStats(d, 30)
+  if (!d.resets) return { text: 'Je n’arrive pas à lire le journal des mots de passe pour le moment.', actions: [go.msgs] }
+  if (!rows.length) return { text: '🔑 **Mots de passe oubliés — 30 derniers jours**\nAucune demande de réinitialisation. 👍', actions: [go.msgs], chips: CHIPS.base }
+  const lines = [
+    '🔑 **Mots de passe oubliés — 30 derniers jours**',
+    `- Demandes : **${c('demande')}** (e-mail ${c('demande', 'email')} · WhatsApp ${c('demande', 'whatsapp')})`,
+    `- Liens e-mail envoyés automatiquement : **${c('envoye', 'email')}** · codes WhatsApp envoyés par vous : **${c('envoye', 'whatsapp')}**`,
+    `- Mots de passe réinitialisés : **${c('reussi')}** (e-mail ${c('reussi', 'email')} · WhatsApp ${c('reussi', 'whatsapp')})`,
+  ]
+  const done = rows.filter((r) => r.event === 'reussi')
+  if (done.length) lines.push(`- **Ont changé leur mot de passe** : ${done.slice(0, 10).map((r) => `${r.customer_name ?? 'Client'} (${RESET_CHANNEL_FR[r.channel]}, ${ago(r.created_at)})`).join(', ')}`)
+  if (c('echec')) lines.push(`- Codes incorrects saisis : ${c('echec')}`)
+  if (limits.length) lines.push(`- ⛔ Demandes bloquées (plus de 3 en 1 heure) : ${limits.length} — ${[...new Set(limits.map((r) => r.customer_name ?? 'Client'))].join(', ')}`)
+  if (waiting.length) lines.push(`\n⏳ **${plural(waiting.length, 'demande WhatsApp attend', 'demandes WhatsApp attendent')} votre code** : ${waiting.map((r) => `${r.customer_name ?? 'Client'} (${ago(r.created_at)})`).join(', ')} → « Messages WhatsApp ».`)
+  if (manyFails.length) lines.push(`\n⚠️ Plusieurs codes incorrects pour ${manyFails.map(([n, k]) => `${n} (${k})`).join(', ')} : appelez le client pour vérifier que c’est bien lui.`)
+  lines.push('\n**Derniers événements :**')
+  for (const r of rows.slice(0, 8)) lines.push(`- ${EV_ICON[r.event] ?? '•'} ${r.customer_name ?? 'Client'} · ${RESET_CHANNEL_FR[r.channel]} · ${RESET_EVENT_FR[r.event]} · ${ago(r.created_at)}`)
+  lines.push('\n🔒 Les codes et mots de passe ne sont jamais enregistrés dans ce journal ni montrés à l’assistant.')
+  return { text: lines.join('\n'), actions: [go.msgs, go.clients], chips: ['Résumé du jour', 'Vos clients', 'Audit de la boutique'] }
+}
+
 const HELP: Reply = {
-  text: 'Voici ce que je sais faire :\n- 📊 **Ventes** : « Chiffre d’affaires de la semaine dernière », « Ventes en mars », « Comparer avec le mois dernier »\n- 📦 **Stock** : « Que dois-je réapprovisionner ? », « Produits qui ne se vendent pas », « Valeur de mon stock »\n- 🧾 **Commandes** : « Commandes à traiter », « Taux d’annulation », ou un numéro « YS-… »\n- 👥 **Clients** : « Meilleurs clients », « Nouveaux inscrits ce mois », « Villes qui achètent le plus »\n- 🔮 **Prévisions** : « Prévision fin de mois », « Objectif 1 500 000 »\n- ✍️ **Rédaction** : « Rédige un post pour la promo », « Description pour Sac à main cuir camel »',
+  text: 'Voici ce que je sais faire :\n- 📊 **Ventes** : « Chiffre d’affaires de la semaine dernière », « Ventes en mars », « Comparer avec le mois dernier »\n- 📦 **Stock** : « Que dois-je réapprovisionner ? », « Produits qui ne se vendent pas », « Valeur de mon stock »\n- 🧾 **Commandes** : « Commandes à traiter », « Taux d’annulation », ou un numéro « YS-… »\n- 👥 **Clients** : « Meilleurs clients », « Nouveaux inscrits ce mois », « Villes qui achètent le plus »\n- 🔑 **Mots de passe** : « Rapport mots de passe », « Qui a réinitialisé son mot de passe ? »\n- 🔮 **Prévisions** : « Prévision fin de mois », « Objectif 1 500 000 »\n- ✍️ **Rédaction** : « Rédige un post pour la promo », « Description pour Sac à main cuir camel »',
   chips: CHIPS.base,
 }
 
@@ -440,6 +473,7 @@ export function answer(question: string, d: AssistantData): Reply {
   const oid = q.match(/ys-[a-z0-9]{4,9}/)?.[0]; if (oid) return orderInfo(oid, d)
   if (has(q, 'aide', 'que sais', 'que peux', 'quoi faire', 'comment ca marche', 'help', 'fonctionnalit')) return HELP
   if (/^(bonjour|bonsoir|salut|hello|coucou|merci)/.test(q) && q.split(' ').length <= 3) return q.startsWith('merci') ? { text: 'Avec plaisir 😊 Autre chose ?', chips: CHIPS.base } : welcome(d, '')
+  if (has(q, 'mot de passe', 'mots de passe', 'mdp', 'password', 'reinitialis', 'oublie', 'code wa', 'code whatsapp', 'lien de recuperation', 'recuperation')) return passwords(d)
   if (has(q, 'audit', 'diagnostic', 'etat des lieux', 'analyse complete', 'analyse globale', 'rapport', 'bilan complet', 'analyse ma boutique', 'analyse la boutique', 'point complet')) return audit(d)
   if (has(q, 'marge', 'benefice', 'profit', 'rentab', 'gagne net', 'net ')) return margin(q, d)
   if (has(q, 'confirm', 'verifi', 'encaiss', 'recu', 'valide') && has(q, 'paiement', 'paye', 'orange', 'wave', 'mtn', 'moov', 'mobile money', 'cinetpay')) return payments(q, d)
@@ -505,7 +539,19 @@ export function buildFacts(d: AssistantData) {
     stock_resume: { produits_en_vente: d.catalog.filter((c) => c.active).length, en_rupture: d.catalog.filter((c) => c.active && c.stock === 0).map((c) => c.name), sous_seuil: d.catalog.filter((c) => c.active && c.stock > 0 && c.stock <= c.low_stock_threshold).map((c) => c.name), valeur_prix_vente: d.catalog.filter((c) => c.active).reduce((a, c) => a + c.price * c.stock, 0) },
     paiements_choisis_30j: (() => { const m = new Map<string, number>(); d.orders.filter((o) => valid(o) && t(o.created_at) >= today - 29 * DAY).forEach((o) => m.set(o.payment, (m.get(o.payment) ?? 0) + 1)); return Object.fromEntries(m) })(),
     rythme_90j: rhythm(d),
-    codes_promo: ['YVES10 (−10 %)', 'BIENVENUE (nouveaux clients)'],
+    mots_de_passe_oublies_30j: (() => {
+      const { rows, c, waiting, limits } = resetStats(d, 30)
+      // Prénom + initiale uniquement ; aucun code ni mot de passe n’est enregistré ni transmis
+      return {
+        demandes: { total: c('demande'), email: c('demande', 'email'), whatsapp: c('demande', 'whatsapp') },
+        liens_email_envoyes_automatiquement: c('envoye', 'email'), codes_whatsapp_envoyes_par_le_gerant: c('envoye', 'whatsapp'),
+        reinitialisations_reussies: { total: c('reussi'), email: c('reussi', 'email'), whatsapp: c('reussi', 'whatsapp') },
+        codes_incorrects: c('echec'), demandes_bloquees_trop_frequentes: limits.length,
+        whatsapp_en_attente_de_code: waiting.map((r) => ({ client: r.customer_name ?? 'Client', depuis: ago(r.created_at) })),
+        derniers_evenements: rows.slice(0, 12).map((r) => ({ client: r.customer_name ?? 'Client', canal: RESET_CHANNEL_FR[r.channel], evenement: RESET_EVENT_FR[r.event], quand: ago(r.created_at) })),
+      }
+    })(),
+    codes_promo: ['YVES10 : −10 % sur la commande', 'BIENVENUE : −5 000 FCFA dès 30 000 FCFA d’achat'],
     livraison: 'Abidjan 2 000 FCFA, intérieur 3 500 FCFA, offerte dès 50 000 FCFA',
     limites_des_donnees: [
       'Paiements : seul le moyen CHOISI par le client est enregistré ; aucun paiement n’est vérifié ou confirmé automatiquement, et le back-office n’a pas de statut de paiement (le gérant vérifie sur son téléphone marchand).',

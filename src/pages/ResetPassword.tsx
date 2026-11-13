@@ -64,6 +64,7 @@ function CodeForm({ initialId }: { initialId: string }) {
 /** Formulaire classique (arrivée via le lien e-mail de réinitialisation) */
 function SessionForm() {
   const setNewPassword = useAuth((s) => s.setNewPassword)
+  const reportEmailResetDone = useAuth((s) => s.reportEmailResetDone)
   const nav = useNavigate()
   const [pw, setPw] = useState('')
   const [pw2, setPw2] = useState('')
@@ -74,7 +75,7 @@ function SessionForm() {
     if (!passwordRules.every((r) => r.test(pw))) return setErr('8 caractères minimum, avec une lettre et un chiffre.')
     if (pw !== pw2) return setErr('Les deux mots de passe ne correspondent pas.')
     setLoading(true); const r = await setNewPassword(pw); setLoading(false)
-    if (r.ok) nav('/mon-compte', { replace: true }); else setErr(r.error)
+    if (r.ok) { void reportEmailResetDone(); nav('/mon-compte', { replace: true }) } else setErr(r.error)
   }
   return (
     <form onSubmit={submit} className="mt-6 space-y-5">

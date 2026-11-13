@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { cn } from '../../lib/format'
 import { DEMO, supabase } from '../../lib/supabase'
 import { answer, buildFacts, welcome, type AssistantData, type Reply } from './assistant-engine'
-import { fetchCatalog, fetchClients, fetchMovements, fetchOrders } from './shared'
+import { fetchCatalog, fetchClients, fetchResetLog, fetchMovements, fetchOrders } from './shared'
 
 type Msg = { id: number; role: 'user' | 'assistant'; text: string; actions?: Reply['actions']; chips?: string[]; ai?: boolean }
 
@@ -56,8 +56,8 @@ export default function Assistant({ open, onClose, name }: { open: boolean; onCl
 
   const load = useCallback(async () => {
     try {
-      const [orders, catalog, moves, clients] = await Promise.all([fetchOrders(), fetchCatalog(), fetchMovements(), fetchClients()])
-      const d = { orders, catalog, moves, clients }; setData(d); loadedAt.current = Date.now(); setLoadErr(''); return d
+      const [orders, catalog, moves, clients, resets] = await Promise.all([fetchOrders(), fetchCatalog(), fetchMovements(), fetchClients(), fetchResetLog().catch(() => undefined)])
+      const d = { orders, catalog, moves, clients, resets }; setData(d); loadedAt.current = Date.now(); setLoadErr(''); return d
     } catch (e) { setLoadErr((e as Error).message); return null }
   }, [])
 

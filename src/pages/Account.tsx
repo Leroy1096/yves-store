@@ -41,7 +41,7 @@ function LoginForm({ onDone, switchTo }: { onDone: () => void; switchTo: () => v
     setErr(''); setResetMsg('')
     if (!isEmail(id)) return setErr('Saisissez l’adresse e-mail de votre compte ci-dessus.')
     setLoading(true); const r = await requestReset(id); setLoading(false)
-    if (r.ok) setResetMsg('Si un compte existe pour cette adresse, un lien de réinitialisation vient d’être envoyé.'); else setErr(r.error)
+    if (r.ok) setResetMsg('Si un compte existe pour cette adresse, un lien sécurisé (valable 1 heure) vient d’être envoyé. Pensez à vérifier vos courriers indésirables.'); else setErr(r.error)
   }
   const sendWaCode = async () => {
     setErr(''); setResetMsg('')
@@ -70,7 +70,12 @@ function LoginForm({ onDone, switchTo }: { onDone: () => void; switchTo: () => v
               </button>
               <Link to={`/reinitialiser${id.trim() ? `?id=${encodeURIComponent(id.trim())}` : ''}`} className="mt-2.5 block text-center text-xs font-semibold text-ink underline-offset-4 hover:underline">J’ai déjà reçu mon code →</Link>
               {isEmail(id) && (
-                <p className="mt-3 border-t border-ink/10 pt-3 text-xs text-ink-500">Compte e-mail ? Vous pouvez aussi <button type="button" onClick={sendReset} disabled={loading} className="font-semibold text-gold-dark hover:underline">recevoir un lien par e-mail</button>.</p>
+                <div className="mt-3 border-t border-ink/10 pt-3">
+                  <button type="button" onClick={sendReset} disabled={loading} className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-ink/15 bg-white px-4 py-2.5 text-xs font-bold uppercase tracking-[0.1em] text-ink transition hover:border-ink/40 disabled:opacity-60">
+                    {loading ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />} Recevoir un lien par e-mail
+                  </button>
+                  <p className="mt-1.5 text-center text-[11px] text-ink-500">Envoi automatique, immédiat, 24 h/24 — lien sécurisé valable 1 heure.</p>
+                </div>
               )}
             </div>
           </motion.div>

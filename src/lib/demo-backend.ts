@@ -18,6 +18,7 @@ interface DB {
   catalog_categories: Row[]
   stock_movements: Row[]
   whatsapp_requests: Row[]
+  password_reset_log: Row[]
   seq: number
 }
 
@@ -25,7 +26,7 @@ export const DEMO_GERANT = { email: 'yvesstore1@gmail.com' }
 
 const KEY = 'yves-demo-db'
 const SKEY = 'yves-demo-session'
-const DB_VERSION = 8
+const DB_VERSION = 9
 const BASE_CATS = categories.map((c) => ({ id: c.id, name: c.name, tagline: c.tagline }))
 // Instantané du catalogue AVANT toute modification (stock et prix d’origine)
 const SEED = products.map((p) => ({ id: p.id, name: p.name, category: p.category, price: p.price, compare_at: p.compareAt ?? null, stock: p.stock, image: p.images[0], sizes: p.sizes, colors: p.colors }))
@@ -33,9 +34,14 @@ const SEED = products.map((p) => ({ id: p.id, name: p.name, category: p.category
 const iso = (msAgo = 0) => new Date(Date.now() - msAgo).toISOString()
 const H = 3600_000, D = 24 * H
 const uuid = () => 'demo-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
+/** Journal « mot de passe oublié » (prénom + initiale, jamais de code ni de mot de passe) */
+const shortName = (first?: string | null, last?: string | null) => `${first ?? ''} ${last ? last.slice(0, 1) + '.' : ''}`.trim() || 'Client'
+function rlog(db: DB, user_id: string | null, name: string, channel: 'whatsapp' | 'email', event: string, detail: string, msAgo = 0) {
+  db.password_reset_log.unshift({ id: db.seq++, user_id, customer_name: name, channel, event, detail, created_at: iso(msAgo) })
+}
 
 function seed(): DB {
-  const db: DB = { v: DB_VERSION, users: [], profiles: [], admins: [], orders: [], catalog_products: [], catalog_categories: [], stock_movements: [], whatsapp_requests: [], seq: 1 }
+  const db: DB = { v: DB_VERSION, users: [], profiles: [], admins: [], orders: [], catalog_products: [], catalog_categories: [], stock_movements: [], whatsapp_requests: [], password_reset_log: [], seq: 1 }
   db.catalog_categories = BASE_CATS.map((c) => ({ ...c, custom: false, created_at: iso(30 * D) }))
   db.catalog_products = SEED.map((p) => ({ id: p.id, name: p.name, category: p.category, price: p.price, compare_at: p.compare_at, active: true, stock: p.stock, low_stock_threshold: 5, updated_at: iso(10 * D) }))
 
@@ -171,7 +177,18 @@ function simulateShop(db: DB, addUser: AddUser) {
   const track = recent.find((o) => o.status === 'expediee' && byUser(o)); if (track) req('order_tracking', track, byUser(track)!, 2 * H, 'suivi')
   const conf = recent.find((o) => o.status === 'confirmee' && byUser(o)); if (conf) req('order_cancel', conf, byUser(conf)!, 0.5 * H, 'aide')
   const old = recent.find((o) => o.status === 'livree' && byUser(o)); if (old) req('order_tracking', old, byUser(old)!, 3 * D, 'suivi', 'traite')
-  const forgot = users.find((u) => u.first === 'Mariam'); if (forgot) req('password_reset', null, forgot, 50 * 60_000)
+  const forgot = users.find((u) => u.first === 'Mariam'); if (forgot) req('reset_password', null, forgot, 50 * 60_000)
+  // Journal des réinitialisations (rapport gérant)
+  const M = 60_000
+  const L = (u: (typeof users)[number] | undefined, ch: 'whatsapp' | 'email', ev: [string, string, number][]) => { if (u) for (const [e, dt, ago] of ev) rlog(db, u.id || null, shortName(u.first, u.last), ch, e, dt, ago) }
+  const byFirst = (f: string) => users.find((u) => u.first === f)
+  L(byFirst('Grâce'), 'email', [['demande', 'Demande de lien par e-mail', 12 * D], ['envoye', 'Lien envoyé automatiquement par e-mail', 12 * D - 1000], ['reussi', 'Mot de passe changé avec le lien e-mail', 12 * D - 6 * M]])
+  L(byFirst('Serge'), 'whatsapp', [['demande', 'Demande de code WhatsApp', 9 * D], ['envoye', 'Code envoyé sur WhatsApp par le gérant', 9 * D - 25 * M], ['echec', 'Code incorrect (tentative 1/5)', 9 * D - 31 * M], ['reussi', 'Mot de passe changé avec le code WhatsApp', 9 * D - 33 * M]])
+  L(byFirst('Ange'), 'email', [['demande', 'Demande de lien par e-mail', 4 * D], ['envoye', 'Lien envoyé automatiquement par e-mail', 4 * D - 1000], ['reussi', 'Mot de passe changé avec le lien e-mail', 4 * D - 3 * M]])
+  L(byFirst('Christelle'), 'whatsapp', [['demande', 'Demande de code WhatsApp', 2 * D], ['envoye', 'Code envoyé sur WhatsApp par le gérant', 2 * D - 40 * M], ['reussi', 'Mot de passe changé avec le code WhatsApp', 2 * D - 52 * M]])
+  L(byFirst('Aya'), 'email', [['demande', 'Demande de lien par e-mail', 5 * H], ['envoye', 'Lien envoyé automatiquement par e-mail', 5 * H - 1000], ['demande', 'Demande de lien par e-mail', 4.9 * H], ['envoye', 'Lien envoyé automatiquement par e-mail', 4.9 * H - 1000], ['demande', 'Demande de lien par e-mail', 4.8 * H], ['envoye', 'Lien envoyé automatiquement par e-mail', 4.8 * H - 1000], ['limite', 'Plus de 3 demandes en 1 heure', 4.7 * H], ['reussi', 'Mot de passe changé avec le lien e-mail', 4.6 * H]])
+  L(forgot, 'whatsapp', [['demande', 'Demande de code WhatsApp', 50 * M]])
+  db.password_reset_log.sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
 }
 
 // ───────────── Historique (≈ 18 mois) pour les graphiques semaines / mois / années ─────────────
@@ -328,7 +345,7 @@ class Query {
     if (t === 'catalog_categories') return db.catalog_categories
     if (t === 'profiles') return db.profiles.filter((p) => p.id === uid() || isAdmin())
     if (t === 'orders') return db.orders.filter((o) => isAdmin() || (uid() && o.user_id === uid()))
-    if (t === 'stock_movements' || t === 'whatsapp_requests') return isAdmin() ? (db[t] as Row[]) : []
+    if (t === 'stock_movements' || t === 'whatsapp_requests' || t === 'password_reset_log') return isAdmin() ? (db[t] as Row[]) : []
     return []
   }
   private exec(): Promise<Res> {
@@ -503,7 +520,9 @@ async function rpc(name: string, a: Row = {}): Promise<Res> {
       if (!admin) return need()!
       const r = db.whatsapp_requests.find((x) => x.id === a.p_request); if (!r || r.status !== 'en_attente') return fail('ALREADY')
       const code = String(Math.floor(100000 + Math.random() * 900000)); const exp = iso(-30 * 60_000)
-      Object.assign(r, { status: 'envoye', sent_at: iso(), code_expires_at: exp, code }); return out({ code, expires_at: exp })
+      Object.assign(r, { status: 'envoye', sent_at: iso(), code_expires_at: exp, code })
+      const pp = db.profiles.find((x) => x.id === r.user_id); rlog(db, r.user_id, shortName(pp?.first_name, pp?.last_name), 'whatsapp', 'envoye', 'Code envoyé sur WhatsApp par le gérant')
+      return out({ code, expires_at: exp })
     }
     case 'cancel_order': {
       const o = db.orders.find((x) => x.id === a.p_order_id && x.user_id === uid()); if (!o) return fail('ORDER_NOT_FOUND')
@@ -533,7 +552,8 @@ async function rpc(name: string, a: Row = {}): Promise<Res> {
       const p = db.profiles.find((x) => (x.email && x.email === id) || (d.length === 10 && (digits(x.phone) === d || digits(x.contact_phone) === d)))
       if (p) {
         const u = db.users.find((x) => x.id === p.id)
-        if (p.contact_phone || p.phone) db.whatsapp_requests.unshift({ id: uuid(), kind: 'password_reset', user_id: p.id, phone: p.contact_phone || p.phone, customer_name: `${p.first_name} ${p.last_name}`, order_id: null, payload: { email: u?.email }, status: 'en_attente', code_expires_at: null, created_at: iso(), sent_at: null })
+        if (p.contact_phone || p.phone) rlog(db, p.id, shortName(p.first_name, p.last_name), 'whatsapp', 'demande', 'Demande de code WhatsApp')
+        if (p.contact_phone || p.phone) db.whatsapp_requests.unshift({ id: uuid(), kind: 'reset_password', user_id: p.id, phone: p.contact_phone || p.phone, customer_name: `${p.first_name} ${p.last_name}`, order_id: null, payload: { email: u?.email }, status: 'en_attente', code_expires_at: null, created_at: iso(), sent_at: null })
         else return out({ ok: true, no_whatsapp: true })
       }
       return out({ ok: true })
@@ -579,12 +599,35 @@ const auth = {
 
 const functions = {
   invoke: async (name: string, { body }: { body: Row }) => {
+    if (name === 'email-reset-password') {
+      const db = load()
+      if (body.action === 'done') {
+        const me = uid(); const p = db.profiles.find((x) => x.id === me); if (!me) return { data: { ok: false }, error: null }
+        const sent = db.password_reset_log.find((x) => x.user_id === me && x.channel === 'email' && x.event === 'envoye' && Date.now() - new Date(x.created_at).getTime() < 3 * H)
+        if (!sent) return { data: { ok: false }, error: null }
+        rlog(db, me, shortName(p?.first_name, p?.last_name), 'email', 'reussi', 'Mot de passe changé avec le lien e-mail'); save()
+        return { data: { ok: true }, error: null }
+      }
+      await new Promise((r) => setTimeout(r, 500))
+      const e = String(body.email ?? '').trim().toLowerCase(); const p = db.profiles.find((x) => x.email && x.email === e)
+      if (!p) return { data: { ok: true, configured: true }, error: null }
+      const n = shortName(p.first_name, p.last_name)
+      const recent = db.password_reset_log.filter((x) => x.user_id === p.id && x.channel === 'email' && x.event === 'demande' && Date.now() - new Date(x.created_at).getTime() < H).length
+      if (recent >= 3) { rlog(db, p.id, n, 'email', 'limite', 'Plus de 3 demandes en 1 heure'); save(); return { data: { ok: false, error: 'Trop de demandes. Réessayez dans une heure ou demandez un code sur WhatsApp.' }, error: null } }
+      rlog(db, p.id, n, 'email', 'demande', 'Demande de lien par e-mail'); rlog(db, p.id, n, 'email', 'envoye', 'Lien envoyé automatiquement par e-mail'); save()
+      return { data: { ok: true, configured: true }, error: null }
+    }
     if (name !== 'wa-reset-password') return { data: null, error: { message: 'unknown' } }
     const db = load(); const id = String(body.identifier ?? '').trim().toLowerCase(); const d = digits(id)
     const p = db.profiles.find((x) => (x.email && x.email === id) || (d.length === 10 && (digits(x.phone) === d || digits(x.contact_phone) === d)))
-    const r = p && db.whatsapp_requests.find((x) => x.kind === 'password_reset' && x.user_id === p.id && x.code === body.code && x.status === 'envoye' && new Date(x.code_expires_at).getTime() > Date.now())
-    if (!p || !r) return { data: { ok: false, error: 'Code incorrect ou expiré. Demandez un nouveau code.' }, error: null }
-    const u = db.users.find((x) => x.id === p.id)!; u.password = body.password; r.status = 'traite'; r.code = null; save()
+    const r = p && db.whatsapp_requests.find((x) => x.kind === 'reset_password' && x.user_id === p.id && x.code === body.code && x.status === 'envoye' && new Date(x.code_expires_at).getTime() > Date.now())
+    if (!p || !r) {
+      const open = p && db.whatsapp_requests.find((x) => x.kind === 'reset_password' && x.user_id === p.id && x.status === 'envoye')
+      if (p && open) { open.attempts = (open.attempts ?? 0) + 1; rlog(db, p.id, shortName(p.first_name, p.last_name), 'whatsapp', 'echec', `Code incorrect (tentative ${open.attempts}/5)`); save() }
+      return { data: { ok: false, error: 'Code incorrect ou expiré. Demandez un nouveau code.' }, error: null }
+    }
+    const u = db.users.find((x) => x.id === p.id)!; u.password = body.password; r.status = 'traite'; r.code = null
+    rlog(db, p.id, shortName(p.first_name, p.last_name), 'whatsapp', 'reussi', 'Mot de passe changé avec le code WhatsApp'); save()
     return { data: { ok: true }, error: null }
   },
 }

@@ -47,6 +47,7 @@ interface AuthState {
   changePassword: (current: string, next: string) => Promise<Result>
   requestReset: (email: string) => Promise<Result>
   setNewPassword: (next: string) => Promise<Result>
+  reportEmailResetDone: () => Promise<void>
 }
 
 let profileSeq = 0
@@ -158,8 +159,27 @@ export const useAuth = create<AuthState>()((set, get) => ({
 
   requestReset: async (email) => {
     if (!isEmail(email)) return { ok: false, error: 'Adresse e-mail invalide.' }
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo: `${location.origin}/reinitialiser` })
+    const e = email.trim().toLowerCase()
+    const redirectTo = `${location.origin}/reinitialiser`
+    // 1) Envoi automatique par notre fonction serveur (Brevo / Resend) + journal pour le gérant
+    try {
+      const { data, error } = await supabase.functions.invoke('email-reset-password', { body: { action: 'request', email: e, redirect_to: redirectTo } })
+      if (error) {
+        let msg: string | undefined
+        try { msg = (await (error as { context?: Response }).context?.json())?.error } catch { /* ignore */ }
+        if (msg) return { ok: false, error: msg }
+      } else if (data?.configured !== false) {
+        return data?.ok ? { ok: true } : { ok: false, error: data?.error ?? 'Service momentanément indisponible. Réessayez.' }
+      }
+    } catch { /* repli ci-dessous */ }
+    // 2) Repli : envoi standard Supabase
+    const { error } = await supabase.auth.resetPasswordForEmail(e, { redirectTo })
     return error ? { ok: false, error: translateAuthError(error.message) } : { ok: true }
+  },
+
+  reportEmailResetDone: async () => {
+    // Journalise la réussite (sans aucun mot de passe) et prévient le gérant — échec silencieux
+    try { await supabase.functions.invoke('email-reset-password', { body: { action: 'done' } }) } catch { /* ignore */ }
   },
 
   setNewPassword: async (next) => {

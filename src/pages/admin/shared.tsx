@@ -31,6 +31,8 @@ export interface Client {
   signup_method: string | null; city: string | null; commune: string | null; created_at: string; last_sign_in_at: string | null
   blocked: boolean; is_admin: boolean; orders_count: number; total_spent: number; last_order_at: string | null
 }
+/** Journal « mot de passe oublié » : jamais de code ni de mot de passe, prénom + initiale uniquement */
+export interface ResetLog { id: number; user_id: string | null; customer_name: string | null; channel: 'whatsapp' | 'email'; event: 'demande' | 'envoye' | 'reussi' | 'echec' | 'limite'; detail: string | null; created_at: string }
 export type { CatalogRow }
 
 // ───────────── Données ─────────────
@@ -49,6 +51,14 @@ export async function fetchMovements() {
   if (error) throw new Error(error.message)
   return (data ?? []) as Movement[]
 }
+export async function fetchResetLog(days = 90) {
+  const { data, error } = await supabase.from('password_reset_log').select('id,user_id,customer_name,channel,event,detail,created_at')
+    .gte('created_at', new Date(Date.now() - days * 86400000).toISOString()).order('created_at', { ascending: false }).limit(500)
+  if (error) throw new Error(error.message)
+  return (data ?? []) as ResetLog[]
+}
+export const RESET_EVENT_FR: Record<ResetLog['event'], string> = { demande: 'Demande', envoye: 'Envoyé', reussi: 'Réinitialisé', echec: 'Code incorrect', limite: 'Bloqué (trop de demandes)' }
+export const RESET_CHANNEL_FR: Record<ResetLog['channel'], string> = { whatsapp: 'WhatsApp', email: 'E-mail' }
 export async function fetchClients() {
   const { data, error } = await supabase.rpc('admin_list_clients')
   if (error) throw new Error(error.message)
