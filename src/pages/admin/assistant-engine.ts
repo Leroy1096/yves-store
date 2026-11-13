@@ -304,7 +304,7 @@ function newClients(q: string, d: AssistantData): Reply {
     const month = period('mois'); const fresh = all.filter((c) => inP(c.created_at, month.from, month.to)).length
     const ordered = all.filter((c) => c.orders_count > 0).length
     return {
-      text: `👥 **Clients inscrits : ${all.length}** au total\n- Ont déjà commandé : ${ordered} (${all.length ? Math.round((ordered / all.length) * 100) : 0} %)\n- Nouveaux ${month.label} : ${fresh}`,
+      text: `👥 **Clients inscrits : ${all.length}** au total\n- Ont déjà commandé : ${ordered} (${all.length ? Math.round((ordered / all.length) * 100) : 0} %)\n- Nouveaux ${month.label} : ${fresh}\n- Comptes bloqués : ${all.filter((c) => c.blocked).length}`,
       actions: [go.clients], chips: ['Meilleurs clients', 'Nouveaux inscrits ce mois'],
     }
   }
@@ -355,6 +355,57 @@ function productInfo(c: CatalogRow, d: AssistantData): Reply {
   }
 }
 
+const short = (c: Client) => `${c.first_name ?? ''} ${(c.last_name ?? '').slice(0, 1)}${c.last_name ? '.' : ''}`.trim() || 'Client'
+
+/** Vue d’ensemble des clients inscrits (sans téléphone ni e-mail) */
+function clientsOverview(d: AssistantData): Reply {
+  const all = d.clients.filter((c) => !c.is_admin)
+  if (!all.length) return { text: '👥 Aucun client inscrit pour le moment.', actions: [go.clients], chips: CHIPS.base }
+  const buyers = all.filter((c) => c.orders_count > 0), never = all.length - buyers.length
+  const repeat = buyers.filter((c) => c.orders_count >= 2).length
+  const month = period('mois'); const fresh = all.filter((c) => inP(c.created_at, month.from, month.to)).length
+  const spent = buyers.reduce((a, c) => a + c.total_spent, 0)
+  const cities = new Map<string, number>(); all.forEach((c) => { const k = c.city || 'Non renseignée'; cities.set(k, (cities.get(k) ?? 0) + 1) })
+  const topC = [...buyers].sort((a, b) => b.total_spent - a.total_spent).slice(0, 5)
+  const sleepy = buyers.filter((c) => c.orders_count >= 2 && c.last_order_at && Date.now() - t(c.last_order_at) > 45 * DAY).length
+  return {
+    text: `👥 **Vos clients : ${all.length} inscrits**\n- Ont déjà commandé : **${buyers.length}** (${Math.round((buyers.length / all.length) * 100)} %) · jamais commandé : ${never}\n- Clients fidèles (2 commandes ou plus) : **${repeat}**\n- Nouveaux ${month.label} : ${fresh}${all.some((c) => c.blocked) ? ` · bloqués : ${all.filter((c) => c.blocked).length}` : ''}\n- Dépense moyenne par acheteur : **${fcfa(buyers.length ? Math.round(spent / buyers.length) : 0)}**\n- Villes : ${[...cities.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${k} (${v})`).join(' · ')}\n\n💎 **Top 5 clients**\n${topC.map((c, i) => `${i + 1}. **${short(c)}**${c.city ? ` (${c.city})` : ''} — ${fcfa(c.total_spent)} · ${plural(c.orders_count, 'commande')}`).join('\n')}${sleepy || never ? `\n\n💡 ${sleepy ? `${plural(sleepy, 'client fidèle', 'clients fidèles')} sans achat depuis 45 jours : relancez-les sur WhatsApp. ` : ''}${never ? `${plural(never, 'inscrit')} n’${never > 1 ? 'ont' : 'a'} jamais commandé : un code BIENVENUE peut ${never > 1 ? 'les' : 'le'} décider.` : ''}` : ''}`,
+    actions: [go.clients], chips: ['Meilleurs clients', 'Villes qui achètent le plus', 'Nouveaux inscrits ce mois'],
+  }
+}
+
+/** Audit complet de la boutique à partir des données réelles */
+function audit(d: AssistantData): Reply {
+  const now = Date.now(), today = dayStart(now)
+  const m = period('mois'), s = sales(d, m.from, m.to), sp = sales(d, m.prev.from, m.prev.to)
+  const s30 = sales(d, today - 29 * DAY, now + 1)
+  const cancelRate = s30.all.length ? Math.round((s30.cancelled / s30.all.length) * 100) : 0
+  const todo = d.orders.filter((o) => o.status === 'confirmee' || o.status === 'preparation')
+  const late = todo.filter((o) => now - t(o.created_at) > 2 * DAY).length
+  const act = d.catalog.filter((c) => c.active), out = act.filter((c) => c.stock === 0), low = act.filter((c) => c.stock > 0 && c.stock <= c.low_stock_threshold)
+  const plan = restockPlan(d), dm = dormant(d), top = topProducts(d, today - 29 * DAY, now + 1)
+  const all = d.clients.filter((c) => !c.is_admin), buyers = all.filter((c) => c.orders_count > 0), repeat = buyers.filter((c) => c.orders_count >= 2).length
+  const stockVal = act.reduce((a, c) => a + c.price * c.stock, 0)
+  const good: string[] = [], warn: string[] = [], todoList: string[] = []
+  if (sp.revenue && s.revenue >= sp.revenue) good.push(`Ventes du mois en hausse (${evol(s.revenue, sp.revenue)} vs ${m.prev.label})`)
+  else if (sp.revenue) warn.push(`Ventes du mois en baisse (${evol(s.revenue, sp.revenue)} vs ${m.prev.label})`)
+  if (cancelRate >= 10) warn.push(`Taux d’annulation élevé : **${cancelRate} %** sur 30 jours`); else if (s30.all.length) good.push(`Taux d’annulation maîtrisé : ${cancelRate} % sur 30 jours`)
+  if (out.length) warn.push(`${plural(out.length, 'produit')} en rupture : ${out.slice(0, 3).map((c) => c.name).join(', ')}`)
+  if (low.length) warn.push(`${plural(low.length, 'produit')} sous le seuil d’alerte`)
+  if (late) warn.push(`${plural(late, 'commande')} en attente depuis plus de 2 jours`)
+  if (dm.length) warn.push(`${plural(dm.length, 'produit')} sans vente depuis 45 jours (stock immobilisé)`)
+  if (buyers.length && repeat / buyers.length >= 0.3) good.push(`Bonne fidélité : ${Math.round((repeat / buyers.length) * 100)} % des acheteurs ont commandé 2 fois ou plus`)
+  if (all.length && buyers.length / all.length < 0.6) warn.push(`${plural(all.length - buyers.length, 'inscrit')} sans aucune commande`)
+  if (todo.length) todoList.push(`Traiter les **${plural(todo.length, 'commande')} en attente**${late ? ` (dont ${late} en retard)` : ''}`)
+  if (plan[0]) todoList.push(`Réapprovisionner : ${plan.slice(0, 3).map((x) => `${x.c.name} (+${x.order})`).join(', ')}`)
+  if (dm[0]) todoList.push(`Promotion sur les produits dormants (ex. **${dm[0].name}**, ${dm[0].stock} en stock)`)
+  if (all.length - buyers.length > 0) todoList.push(`Relancer les inscrits sans commande avec le code **BIENVENUE**`)
+  return {
+    text: `🩺 **Audit de la boutique** — ${new Date(now).toISOString().slice(0, 10).split('-').reverse().join('/')}\n\n**📊 Ventes**\n- ${m.label} : **${fcfa(s.revenue)}** · ${plural(s.n, 'commande')} · panier moyen ${fcfa(s.avg)}\n- 30 derniers jours : ${fcfa(s30.revenue)} · ${plural(s30.n, 'commande')} · ${s30.cancelled} annulée(s) (${cancelRate} %)\n- Meilleure vente (30 j) : ${top[0] ? `**${top[0].name}** (${top[0].qty} vendus)` : '—'}\n\n**🧾 Commandes** : ${todo.length} à traiter${late ? `, dont **${late} en retard**` : ''}\n\n**📦 Stock** : ${act.length} produits en vente · ${out.length} en rupture · ${low.length} sous le seuil · valeur ${fcfa(stockVal)}\n\n**👥 Clients** : ${all.length} inscrits · ${buyers.length} acheteurs · ${repeat} fidèles\n${good.length ? `\n✅ **Points forts**\n${good.map((x) => '- ' + x).join('\n')}\n` : ''}${warn.length ? `\n⚠️ **Points à surveiller**\n${warn.map((x) => '- ' + x).join('\n')}\n` : ''}${todoList.length ? `\n🎯 **Plan d’action**\n${todoList.map((x, i) => `${i + 1}. ${x}`).join('\n')}` : ''}\n\nℹ️ Limites : paiements non vérifiés automatiquement, pas de prix d’achat (marge inconnue), pas de statistiques de visites.`,
+    actions: [go.orders, go.stock, go.clients], chips: ['Que dois-je réapprovisionner ?', 'Vos clients', 'Prévision fin de mois'],
+  }
+}
+
 /** Marge : impossible sans prix d’achat — on le dit clairement, sans inventer */
 function margin(q: string, d: AssistantData): Reply {
   const p = period(q, 'mois'); const s = sales(d, p.from, p.to)
@@ -389,6 +440,7 @@ export function answer(question: string, d: AssistantData): Reply {
   const oid = q.match(/ys-[a-z0-9]{4,9}/)?.[0]; if (oid) return orderInfo(oid, d)
   if (has(q, 'aide', 'que sais', 'que peux', 'quoi faire', 'comment ca marche', 'help', 'fonctionnalit')) return HELP
   if (/^(bonjour|bonsoir|salut|hello|coucou|merci)/.test(q) && q.split(' ').length <= 3) return q.startsWith('merci') ? { text: 'Avec plaisir 😊 Autre chose ?', chips: CHIPS.base } : welcome(d, '')
+  if (has(q, 'audit', 'diagnostic', 'etat des lieux', 'analyse complete', 'analyse globale', 'rapport', 'bilan complet', 'analyse ma boutique', 'analyse la boutique', 'point complet')) return audit(d)
   if (has(q, 'marge', 'benefice', 'profit', 'rentab', 'gagne net', 'net ')) return margin(q, d)
   if (has(q, 'confirm', 'verifi', 'encaiss', 'recu', 'valide') && has(q, 'paiement', 'paye', 'orange', 'wave', 'mtn', 'moov', 'mobile money', 'cinetpay')) return payments(q, d)
   if (has(q, 'client') && has(q, 'combien', 'nombre', 'total')) return newClients(q, d)
@@ -402,6 +454,7 @@ export function answer(question: string, d: AssistantData): Reply {
   if (has(q, 'prevision', 'prevoir', 'projection', 'fin du mois', 'fin de mois', 'estim', 'objectif')) return forecast(q, d)
   if (has(q, 'nouveaux', 'inscrit', 'inscription')) return newClients(q, d)
   if (has(q, 'client') && has(q, 'meilleur', 'fidele', 'top', 'plus', 'gros', 'relancer')) return clientsTop(q, d)
+  if (has(q, 'client', 'acheteur', 'clientele')) return clientsOverview(d)
   if (has(q, 'ville', 'region', 'commune', 'paiement', 'wave', 'orange money', 'livraison', 'retrait', 'ou ')) return geo(q, d)
   if (has(q, 'meilleur jour', 'quel jour', 'quelle heure', 'heure', 'moment', 'quand')) return timing(d)
   if (has(q, 'meilleur', 'top', 'plus vendu', 'best', 'populaire', 'star')) return top(q, d)
@@ -426,17 +479,36 @@ export function buildFacts(d: AssistantData) {
       annee_en_cours: S(Date.UTC(y, 0, 1), now + 1), annee_precedente: S(Date.UTC(y - 1, 0, 1), Date.UTC(y, 0, 1)),
       par_mois_12: Array.from({ length: 12 }, (_, i) => { const f = Date.UTC(y, m - 11 + i, 1); return { mois: new Date(f).toISOString().slice(0, 7), ...S(f, Date.UTC(y, m - 10 + i, 1)) } }),
     },
-    commandes_en_attente: d.orders.filter((o) => o.status === 'confirmee' || o.status === 'preparation').slice(0, 15).map((o) => ({ id: o.id, client: o.customer?.firstName, ville: o.address?.city, total: o.total, statut: o.status, passee: ago(o.created_at) })),
+    commandes_en_attente: d.orders.filter((o) => o.status === 'confirmee' || o.status === 'preparation').slice(0, 15).map((o) => ({ id: o.id, client: `${o.customer?.firstName ?? ''} ${(o.customer?.lastName ?? '').slice(0, 1)}${o.customer?.lastName ? '.' : ''}`.trim() || 'Client', ville: o.address?.city, total: o.total, statut: o.status, passee: ago(o.created_at) })),
     meilleures_ventes_30j: topProducts(d, today - 29 * DAY, now + 1).slice(0, 10).map((x) => ({ produit: x.name, qte: x.qty, montant: x.amount })),
     a_reapprovisionner: restockPlan(d).slice(0, 12).map((x) => ({ produit: x.c.name, stock: x.c.stock, ventes_semaine: x.perWeek, jours_restants: isFinite(x.cover) ? x.cover : null, conseil_commande: x.order })),
     sans_vente_45j: dormant(d).slice(0, 10).map((c) => ({ produit: c.name, stock: c.stock, prix: c.price })),
     catalogue: d.catalog.filter((c) => c.active).map((c) => ({ produit: c.name, categorie: c.category, prix: c.price, prix_barre: c.compare_at, stock: c.stock })),
-    clients: { inscrits: d.clients.filter((c) => !c.is_admin).length, nouveaux_30j: d.clients.filter((c) => !c.is_admin && t(c.created_at) >= today - 29 * DAY).length },
+    clients: (() => {
+      const all = d.clients.filter((c) => !c.is_admin), buyers = all.filter((c) => c.orders_count > 0)
+      const cities = new Map<string, number>(); all.forEach((c) => { const k = c.city || 'Non renseignée'; cities.set(k, (cities.get(k) ?? 0) + 1) })
+      return {
+        inscrits: all.length, acheteurs: buyers.length, jamais_commande: all.length - buyers.length,
+        fideles_2_commandes_ou_plus: buyers.filter((c) => c.orders_count >= 2).length,
+        nouveaux_30j: all.filter((c) => t(c.created_at) >= today - 29 * DAY).length, bloques: all.filter((c) => c.blocked).length,
+        depense_moyenne_par_acheteur: buyers.length ? Math.round(buyers.reduce((a, c) => a + c.total_spent, 0) / buyers.length) : 0,
+        par_ville: Object.fromEntries([...cities.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10)),
+        // Prénom + initiale uniquement : jamais de téléphone, d’e-mail ni d’adresse
+        liste: [...all].sort((a, b) => b.total_spent - a.total_spent).slice(0, 40).map((c) => ({
+          client: short(c), ville: c.city, commandes: c.orders_count, total_depense: c.total_spent,
+          derniere_commande: c.last_order_at ? ago(c.last_order_at) : 'jamais', inscrit: ago(c.created_at), bloque: c.blocked || undefined,
+        })),
+      }
+    })(),
+    commandes_par_statut: Object.fromEntries(['confirmee', 'preparation', 'expediee', 'livree', 'annulee'].map((st) => [STATUS[st], d.orders.filter((o) => o.status === st).length])),
+    annulations_30j_motifs: (() => { const m = new Map<string, number>(); d.orders.filter((o) => o.status === 'annulee' && t(o.created_at) >= today - 29 * DAY).forEach((o) => { const k = o.cancel_reason || 'Sans motif'; m.set(k, (m.get(k) ?? 0) + 1) }); return Object.fromEntries(m) })(),
+    stock_resume: { produits_en_vente: d.catalog.filter((c) => c.active).length, en_rupture: d.catalog.filter((c) => c.active && c.stock === 0).map((c) => c.name), sous_seuil: d.catalog.filter((c) => c.active && c.stock > 0 && c.stock <= c.low_stock_threshold).map((c) => c.name), valeur_prix_vente: d.catalog.filter((c) => c.active).reduce((a, c) => a + c.price * c.stock, 0) },
+    paiements_choisis_30j: (() => { const m = new Map<string, number>(); d.orders.filter((o) => valid(o) && t(o.created_at) >= today - 29 * DAY).forEach((o) => m.set(o.payment, (m.get(o.payment) ?? 0) + 1)); return Object.fromEntries(m) })(),
     rythme_90j: rhythm(d),
     codes_promo: ['YVES10 (−10 %)', 'BIENVENUE (nouveaux clients)'],
     livraison: 'Abidjan 2 000 FCFA, intérieur 3 500 FCFA, offerte dès 50 000 FCFA',
     limites_des_donnees: [
-      'Paiements : seul le moyen CHOISI par le client est enregistré ; aucun paiement n’est vérifié ou confirmé automatiquement.',
+      'Paiements : seul le moyen CHOISI par le client est enregistré ; aucun paiement n’est vérifié ou confirmé automatiquement, et le back-office n’a pas de statut de paiement (le gérant vérifie sur son téléphone marchand).',
       'Aucun prix d’achat enregistré : marge et bénéfice impossibles à calculer.',
       'Le chiffre d’affaires inclut les frais de livraison et exclut les commandes annulées.',
       'Pas de données de visites du site, de paniers abandonnés ni d’avis clients.',

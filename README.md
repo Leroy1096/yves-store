@@ -182,3 +182,12 @@ Depuis la migration `orders_server_side_totals`, le trigger `orders_before_inser
 - livraison recalculée (Abidjan 2 000, intérieur 3 500, retrait 0, offerte dès 50 000 après remise) ;
 - sous-total, remise, livraison et total réécrits par le serveur.
 Si vous changez les frais ou les codes promo dans `src/lib/format.ts`, changez aussi la fonction `orders_before_insert`.
+
+## Assistant IA — Google Gemini (activé)
+- Secret Supabase **`GEMINI_API_KEY`** installé (jamais dans le code ni dans le navigateur).
+- Fonction `supabase/functions/assistant-gerant` (v4) : réservée aux gérants (`is_admin`), clé envoyée en en-tête `x-goog-api-key`.
+- Modèles essayés dans l'ordre (repli automatique si surcharge ou quota) : `gemini-3-flash-preview`, `gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`, `gemini-flash-latest`. Pour changer : secret `GEMINI_MODEL` (liste séparée par des virgules).
+- Données envoyées : chiffres calculés par `buildFacts` (ventes, commandes, stock, clients en **prénom + initiale** uniquement, sans téléphone, e-mail ni adresse) + limites des données.
+- Si Gemini est indisponible, le moteur d'analyse intégré répond (questions « audit », « clients », ventes, stock…).
+- Les réponses Gemini portent le badge « ✨ Gemini ». L'IA ne modifie aucune donnée : elle propose, le gérant valide dans le back-office.
+- Changer de clé : Supabase → Edge Functions → Secrets → `GEMINI_API_KEY`.

@@ -132,6 +132,7 @@ export default function Assistant({ open, onClose, name }: { open: boolean; onCl
               <div className="min-w-0 flex-1">
                 <div className="space-y-1 rounded-2xl rounded-tl-md border border-ink/5 bg-white px-4 py-3 text-[13.5px] leading-relaxed text-ink-800 shadow-sm"><RichText text={m.text} /></div>
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  {m.ai && <span className="rounded-full bg-gold/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gold-dark" title="Réponse rédigée par Google Gemini à partir des données de la boutique">✨ Gemini</span>}
                   {m.actions?.map((a) => <Link key={a.to} to={a.to} onClick={onClose} className="rounded-full bg-ink px-3 py-1 text-[11px] font-bold text-ivory hover:bg-ink-800">{a.label} →</Link>)}
                   <button type="button" onClick={() => { void copyText(m.text).then(() => { setCopied(m.id); setTimeout(() => setCopied(null), 1500) }) }} className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold text-ink-400 hover:bg-ivory-200 hover:text-ink">{copied === m.id ? <><Check size={12} /> Copié</> : <><Copy size={12} /> Copier</>}</button>
                 </div>
