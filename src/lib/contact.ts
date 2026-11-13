@@ -10,7 +10,7 @@ export const PHONE_DISPLAY = '+225 01 40 81 04 15'
 export const PHONE_TEL = '+2250140810415'
 
 /** Message d'accueil WhatsApp (bouton vert flottant + pied de page) — texte fourni par YVES STORE */
-export const WA_WELCOME = "👋 Bonjour et bienvenue chez YVES STORE 🛍️\n\n🛒 1. JE VEUX :\n- Acheter un article\n- Effectuer un paiement\n- Organiser une livraison\n\n🛠️ 2. J'AI UN PROBLÈME :\n- Problème technique\n- Problème de paiement\n- Problème de livraison\n\n📩 Merci de préciser votre demande.\n\nYVES STORE ❤️"
+export const WA_WELCOME = "👋 Bonjour et bienvenue chez YVES STORE 🛍️\n\n🛒 1. J'AI UN BESOIN :\n- Acheter un article\n- Effectuer un paiement\n- Organiser une livraison\n\n🛠️ 2. J'AI UN PROBLÈME :\n- Problème technique\n- Problème de paiement\n- Problème de livraison\n\n📩 Merci de préciser votre demande.\n\nYVES STORE ❤️"
 
 /** Lien WhatsApp d'accueil, identique à https://wa.me/2250140810415?text=👋%20Bonjour%20et%20bienvenue… */
 export const WA_WELCOME_LINK = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(WA_WELCOME)}`
