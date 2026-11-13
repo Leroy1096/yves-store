@@ -299,6 +299,15 @@ function newClients(q: string, d: AssistantData): Reply {
   const p = period(q, 'mois')
   const list = d.clients.filter((c) => !c.is_admin && inP(c.created_at, p.from, p.to))
   const buyers = list.filter((c) => c.orders_count > 0).length
+  const all = d.clients.filter((c) => !c.is_admin)
+  if (has(q, 'combien', 'nombre', 'total') && !has(q, 'nouveau', 'nouveaux', 'aujourd', 'hier', 'semaine', 'mois', 'annee', '20')) {
+    const month = period('mois'); const fresh = all.filter((c) => inP(c.created_at, month.from, month.to)).length
+    const ordered = all.filter((c) => c.orders_count > 0).length
+    return {
+      text: `👥 **Clients inscrits : ${all.length}** au total\n- Ont déjà commandé : ${ordered} (${all.length ? Math.round((ordered / all.length) * 100) : 0} %)\n- Nouveaux ${month.label} : ${fresh}`,
+      actions: [go.clients], chips: ['Meilleurs clients', 'Nouveaux inscrits ce mois'],
+    }
+  }
   return {
     text: `👥 **Nouveaux inscrits ${p.label}** : **${list.length}** (sur ${d.clients.filter((c) => !c.is_admin).length} clients au total)\n${list.length ? `- Ont déjà commandé : ${buyers} (${Math.round((buyers / list.length) * 100)} %)\n- Derniers inscrits : ${list.sort((a, b) => (a.created_at < b.created_at ? 1 : -1)).slice(0, 5).map((c) => `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim()).join(', ')}` : ''}${list.length - buyers > 0 ? `\n\n💡 ${plural(list.length - buyers, 'inscrit')} n’${list.length - buyers > 1 ? 'ont' : 'a'} pas encore commandé : le code **BIENVENUE** est fait pour eux.` : ''}`,
     actions: [go.clients], chips: ['Meilleurs clients', 'Résumé du jour'],
@@ -346,6 +355,28 @@ function productInfo(c: CatalogRow, d: AssistantData): Reply {
   }
 }
 
+/** Marge : impossible sans prix d’achat — on le dit clairement, sans inventer */
+function margin(q: string, d: AssistantData): Reply {
+  const p = period(q, 'mois'); const s = sales(d, p.from, p.to)
+  return {
+    text: `⚠️ **Je ne peux pas calculer votre marge** : la boutique n’enregistre pas encore le **prix d’achat** de vos produits.\n- Ce que je sais : chiffre d’affaires ${p.label} = **${fcfa(s.revenue)}** (${plural(s.n, 'commande')}).\n- Ce chiffre comprend les frais de livraison payés par les clients et **n’est pas un bénéfice**.\n💡 Ajouter un « prix d’achat » à chaque produit me permettrait de calculer marge et bénéfice exacts.`,
+    chips: ['Ventes ce mois', 'Meilleures ventes du mois'],
+  }
+}
+
+/** Paiements : aucun paiement n’est vérifié automatiquement — on distingue « déclaré » et « confirmé » */
+function payments(q: string, d: AssistantData): Reply {
+  const p = period(q, '30j'); const os = sales(d, p.from, p.to).ok
+  const pay = new Map<string, { n: number; amount: number }>()
+  os.forEach((o) => { const x = pay.get(o.payment) ?? { n: 0, amount: 0 }; x.n++; x.amount += o.total; pay.set(o.payment, x) })
+  const lines = [...pay.entries()].sort((a, b) => b[1].n - a[1].n).map(([k, v]) => `- ${k} : ${plural(v.n, 'commande')} · ${fcfa(v.amount)}`).join('\n')
+  const cod = d.orders.filter((o) => valid(o) && o.status !== 'livree' && /livraison/i.test(o.payment))
+  return {
+    text: `⚠️ **Aucun paiement n’est confirmé automatiquement** : la boutique enregistre seulement le moyen de paiement **choisi** par le client, sans vérification auprès d’Orange, MTN, Wave ou Moov.\n**Moyens choisis ${p.label}** (commandes non annulées) :\n${lines || '- aucune commande'}\n- À encaisser à la livraison (commandes pas encore livrées) : **${fcfa(cod.reduce((a, o) => a + o.total, 0))}** (${plural(cod.length, 'commande')})\n💡 Vérifiez chaque paiement Mobile Money sur votre téléphone marchand avant d’expédier.`,
+    actions: [go.orders], chips: ['Commandes à traiter', 'Ventes ce mois'],
+  }
+}
+
 const HELP: Reply = {
   text: 'Voici ce que je sais faire :\n- 📊 **Ventes** : « Chiffre d’affaires de la semaine dernière », « Ventes en mars », « Comparer avec le mois dernier »\n- 📦 **Stock** : « Que dois-je réapprovisionner ? », « Produits qui ne se vendent pas », « Valeur de mon stock »\n- 🧾 **Commandes** : « Commandes à traiter », « Taux d’annulation », ou un numéro « YS-… »\n- 👥 **Clients** : « Meilleurs clients », « Nouveaux inscrits ce mois », « Villes qui achètent le plus »\n- 🔮 **Prévisions** : « Prévision fin de mois », « Objectif 1 500 000 »\n- ✍️ **Rédaction** : « Rédige un post pour la promo », « Description pour Sac à main cuir camel »',
   chips: CHIPS.base,
@@ -358,6 +389,9 @@ export function answer(question: string, d: AssistantData): Reply {
   const oid = q.match(/ys-[a-z0-9]{4,9}/)?.[0]; if (oid) return orderInfo(oid, d)
   if (has(q, 'aide', 'que sais', 'que peux', 'quoi faire', 'comment ca marche', 'help', 'fonctionnalit')) return HELP
   if (/^(bonjour|bonsoir|salut|hello|coucou|merci)/.test(q) && q.split(' ').length <= 3) return q.startsWith('merci') ? { text: 'Avec plaisir 😊 Autre chose ?', chips: CHIPS.base } : welcome(d, '')
+  if (has(q, 'marge', 'benefice', 'profit', 'rentab', 'gagne net', 'net ')) return margin(q, d)
+  if (has(q, 'confirm', 'verifi', 'encaiss', 'recu', 'valide') && has(q, 'paiement', 'paye', 'orange', 'wave', 'mtn', 'moov', 'mobile money', 'cinetpay')) return payments(q, d)
+  if (has(q, 'client') && has(q, 'combien', 'nombre', 'total')) return newClients(q, d)
   if (has(q, 'post', 'publication', 'publie', 'facebook', 'instagram', 'tiktok', 'statut', 'pub ', 'publicite', 'annonce')) return socialPost(d, q)
   if (has(q, 'description', 'decri', 'fiche produit', 'redige', 'ecris', 'texte')) return description(d, q)
   if (has(q, 'reappro', 'rupture', 'stock faible', 'manque', 'racheter', 'fournisseur', 'commander quoi', 'recommander', 'acheter quoi', 'faut il commander')) return restock(d)
@@ -377,7 +411,7 @@ export function answer(question: string, d: AssistantData): Reply {
   if (has(q, 'stock')) return restock(d)
   const p = findProduct(q, d); if (p) return productInfo(p, d)
   if (q === 'ca' || q.endsWith(' ca')) return revenue(q, d)
-  return { text: 'Je n’ai pas bien compris 🤔 Essayez par exemple une de ces questions :', chips: [...CHIPS.base, 'Aide'] }
+  return { text: 'Je n’ai pas cette information 🤔 Je réponds uniquement à partir des données de votre boutique : ventes, commandes, stock, clients, annulations, promotions. Essayez par exemple :', chips: [...CHIPS.base, 'Aide'] }
 }
 
 /** Contexte chiffré compact transmis à l’IA générative (aucune donnée personnelle sensible) */
@@ -401,5 +435,11 @@ export function buildFacts(d: AssistantData) {
     rythme_90j: rhythm(d),
     codes_promo: ['YVES10 (−10 %)', 'BIENVENUE (nouveaux clients)'],
     livraison: 'Abidjan 2 000 FCFA, intérieur 3 500 FCFA, offerte dès 50 000 FCFA',
+    limites_des_donnees: [
+      'Paiements : seul le moyen CHOISI par le client est enregistré ; aucun paiement n’est vérifié ou confirmé automatiquement.',
+      'Aucun prix d’achat enregistré : marge et bénéfice impossibles à calculer.',
+      'Le chiffre d’affaires inclut les frais de livraison et exclut les commandes annulées.',
+      'Pas de données de visites du site, de paniers abandonnés ni d’avis clients.',
+    ],
   }
 }
