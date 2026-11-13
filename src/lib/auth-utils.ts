@@ -24,7 +24,11 @@ export const formatPhone = (e164?: string | null) => {
 /** Identifiant de connexion (e-mail ou téléphone) → e-mail d'authentification. */
 export function identifierToAuthEmail(id: string): { email: string } | { error: string } {
   const v = id.trim()
-  if (v.includes('@')) return isEmail(v) ? { email: v.toLowerCase() } : { error: 'Adresse e-mail invalide.' }
+  if (v.includes('@')) {
+    // « aya.koné@… » → « aya.kone@… » : les adresses e-mail n’ont pas d’accents, espaces retirés
+    const e = v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '').toLowerCase()
+    return isEmail(e) ? { email: e } : { error: 'Adresse e-mail invalide.' }
+  }
   const p = normalizePhone(v)
   return p ? { email: phoneToAuthEmail(p) } : { error: 'Numéro invalide. Exemple : 07 08 09 10 11' }
 }

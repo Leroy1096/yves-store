@@ -568,7 +568,14 @@ const auth = {
   onAuthStateChange: (cb: (e: string, s: any) => void) => { listeners.add(cb); return { data: { subscription: { unsubscribe: () => listeners.delete(cb) } } } },
   signInWithPassword: async ({ email, password }: { email: string; password: string }) => {
     await new Promise((r) => setTimeout(r, 250))
-    const u = load().users.find((x) => x.email === email.toLowerCase())
+    const db = load(); const e = email.toLowerCase()
+    let u = db.users.find((x) => x.email === e)
+    // Connexion avec le numéro de téléphone d’un compte créé par e-mail (ex. Aya : 07 …)
+    if (!u && e.endsWith('@tel.yvesstore.ci')) {
+      const d = e.split('@')[0].slice(-10)
+      const p = db.profiles.find((x) => [x.phone, x.contact_phone].some((ph) => String(ph ?? '').replace(/\D/g, '').slice(-10) === d))
+      if (p) u = db.users.find((x) => x.id === p.id)
+    }
     // Aperçu hors ligne : l’e-mail gérant est accepté avec le mot de passe saisi (rien n’est envoyé sur Internet)
     if (u && u.password === '' && password.length > 0) u.password = password
     if (!u || u.password !== password) return { data: { session: null, user: null }, error: { message: 'Invalid login credentials' } }

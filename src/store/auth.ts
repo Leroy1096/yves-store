@@ -128,7 +128,9 @@ export const useAuth = create<AuthState>()((set, get) => ({
     if (!supabaseReady) return { ok: false, error: 'Service de comptes non configuré.' }
     const r = identifierToAuthEmail(identifier)
     if ('error' in r) return { ok: false, error: r.error }
-    const { error } = await supabase.auth.signInWithPassword({ email: r.email, password })
+    let { error } = await supabase.auth.signInWithPassword({ email: r.email, password })
+    // Espace ajouté par le clavier du téléphone (auto-complétion) : on réessaie sans
+    if (error && password !== password.trim() && password.trim()) ({ error } = await supabase.auth.signInWithPassword({ email: r.email, password: password.trim() }))
     if (error) return { ok: false, error: translateAuthError(error.message) }
     await get().loadProfile()
     return { ok: true }
