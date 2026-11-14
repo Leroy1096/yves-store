@@ -11,6 +11,13 @@ npm run build    # production build in dist/
 npm run preview  # serve the production build
 ```
 
+## 🚀 Mise en ligne
+- **Site web** : déployé sur **Vercel**, mis à jour automatiquement à chaque push sur `main`.
+- **Appli Android** : APK construit par **GitHub Actions** et publié dans **Releases** —
+  [télécharger la dernière version](https://github.com/Leroy1096/yves-store/releases/latest/download/YVES-STORE.apk).
+- **Contrôle qualité** : ESLint + TypeScript + build à chaque push (workflow « Contrôle du site (CI) »).
+- Guide complet (variables, signature Android, domaine, maintenance) : [`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md).
+
 ## Fonctionnalités
 - **Accueil** : hero animé (parallaxe), bandeau défilant, collections en mosaïque, onglets Best-sellers / Nouveautés / Promos, bannière bijoux, section « 15 à 80 ans », soins capillaires, avis clients, garanties.
 - **Boutique** (`/boutique`) : filtres par catégorie, public (homme/femme/unisexe), tranche d’âge, prix max, note, promotions ; 6 tris ; recherche ; tous les filtres sont dans l’URL (liens partageables) ; tiroir de filtres sur mobile.

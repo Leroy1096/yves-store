@@ -373,7 +373,7 @@ export default function Checkout() {
                       <Social.WhatsApp size={16} /> Commander sur WhatsApp
                     </a>
                   </div>
-                  <p className="mt-4 text-center text-xs text-ink-400">En confirmant, vous acceptez nos conditions générales de vente.</p>
+                  <p className="mt-4 text-center text-xs text-ink-400">En confirmant, vous acceptez nos <Link to="/conditions" target="_blank" rel="noopener" className="underline hover:text-ink">conditions générales de vente</Link>.</p>
                 </section>
               )}
             </motion.div>

@@ -29,3 +29,8 @@ dist-ssr
 !.env.example
 dist-single
 build
+
+# Clés de signature Android (jamais dans le dépôt)
+*.jks
+*.keystore
+android-signing/

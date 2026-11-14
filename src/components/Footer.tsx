@@ -46,6 +46,13 @@ function NewsForm() {
   )
 }
 
+/** Réseaux sociaux : renseignez l’adresse de chaque page (vide = icône masquée, pas de lien mort) */
+const SOCIALS = [
+  { I: Social.Instagram, url: '', label: 'Instagram' },
+  { I: Social.Facebook, url: '', label: 'Facebook' },
+  { I: Social.TikTok, url: '', label: 'TikTok' },
+]
+
 export default function Footer() {
   return (
     <footer className="relative overflow-hidden bg-ink pb-[58px] text-ivory grain lg:pb-0">
@@ -62,8 +69,8 @@ export default function Footer() {
           <Logo light />
           <p className="mt-5 max-w-xs text-sm leading-relaxed text-ivory/60">Parce que votre style raconte qui vous êtes. Mode, bijoux, chaussures, accessoires et soins capillaires choisis avec cœur, pour vous sublimer chaque jour.</p>
           <div className="mt-6 flex gap-3">
-            {[Social.Instagram, Social.Facebook, Social.TikTok].map((I, i) => (
-              <a key={i} href="#" className="grid h-10 w-10 place-items-center rounded-full border border-ivory/15 text-ivory/80 transition hover:border-gold hover:text-gold" aria-label="Réseau social"><I /></a>
+            {SOCIALS.filter((s) => s.url).map(({ I, url, label }) => (
+              <a key={label} href={url} target="_blank" rel="noopener noreferrer" className="grid h-10 w-10 place-items-center rounded-full border border-ivory/15 text-ivory/80 transition hover:border-gold hover:text-gold" aria-label={`YVES STORE sur ${label}`}><I /></a>
             ))}
             <a href={WA_CLIENT_LINK} target="_blank" rel="noopener noreferrer" className="grid h-10 w-10 place-items-center rounded-full border border-[#25D366]/60 text-[#25D366] transition hover:bg-[#25D366] hover:text-white" aria-label="WhatsApp YVES STORE"><Social.WhatsApp /></a>
           </div>
@@ -77,7 +84,7 @@ export default function Footer() {
         <div>
           <p className="eyebrow mb-4">Aide</p>
           <ul className="space-y-2.5 text-sm text-ivory/70">
-            <li>Livraison & délais</li><li>Retours sous 7 jours</li><li>Guide des tailles</li><li>Paiement sécurisé</li><li><Link to="/favoris" className="hover:text-gold-light">Mes favoris</Link></li>
+            <li><Link to="/conditions#livraison" className="hover:text-gold-light">Livraison & délais</Link></li><li><Link to="/conditions#retours" className="hover:text-gold-light">Retours sous 7 jours</Link></li><li><Link to="/conditions#paiement" className="hover:text-gold-light">Paiement</Link></li><li><Link to="/favoris" className="hover:text-gold-light">Mes favoris</Link></li>
           </ul>
         </div>
         <div>
@@ -85,13 +92,13 @@ export default function Footer() {
           <ul className="space-y-3 text-sm text-ivory/70">
             <li className="flex gap-3"><MapPin size={16} className="mt-0.5 shrink-0 text-gold" />Boulevard principal, Agboville<br />& Riviera 2, Cocody — Abidjan</li>
             <li className="flex gap-3"><Phone size={16} className="mt-0.5 shrink-0 text-gold" /><a href={`tel:${PHONE_TEL}`} className="hover:text-gold-light">{PHONE_DISPLAY}</a> · <a href={WA_CLIENT_LINK} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#25D366] hover:underline">WhatsApp</a></li>
-            <li className="flex gap-3"><Mail size={16} className="mt-0.5 shrink-0 text-gold" />contact@yvesstore.ci</li>
+            <li className="flex gap-3"><Mail size={16} className="mt-0.5 shrink-0 text-gold" /><a href="mailto:yvesstore1@gmail.com" className="hover:text-gold-light">yvesstore1@gmail.com</a></li>
             <li className="flex gap-3"><Clock size={16} className="mt-0.5 shrink-0 text-gold" />Lun – Sam : 8 h – 20 h</li>
           </ul>
         </div>
       </div>
       <div className="container-x relative flex flex-col items-center justify-between gap-4 border-t border-ivory/10 py-6 text-xs text-ivory/50 md:flex-row">
-        <p>© {new Date().getFullYear()} YVES STORE. Tous droits réservés.</p>
+        <p>© {new Date().getFullYear()} YVES STORE. Tous droits réservés. · <Link to="/conditions" className="hover:text-gold-light">CGV</Link> · <Link to="/confidentialite" className="hover:text-gold-light">Confidentialité</Link></p>
         <PaymentBadges dark />
       </div>
     </footer>

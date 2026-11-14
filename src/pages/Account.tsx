@@ -167,7 +167,7 @@ function SignupForm({ onDone, switchTo, onHold }: { onDone: () => void; switchTo
       <div className="space-y-2.5">
         <label className="flex cursor-pointer items-start gap-3 text-sm">
           <input type="checkbox" checked={f.terms} onChange={(e) => set('terms', e.target.checked)} className="mt-0.5 h-4 w-4 accent-[#0E0D0B]" />
-          <span className={cn(errors.terms ? 'text-red-700' : 'text-ink-600')}>J’accepte les <span className="underline">conditions générales</span> et la <span className="underline">politique de confidentialité</span>.</span>
+          <span className={cn(errors.terms ? 'text-red-700' : 'text-ink-600')}>J’accepte les <Link to="/conditions" target="_blank" rel="noopener" className="underline hover:text-ink">conditions générales</Link> et la <Link to="/confidentialite" target="_blank" rel="noopener" className="underline hover:text-ink">politique de confidentialité</Link>.</span>
         </label>
         <label className="flex cursor-pointer items-start gap-3 text-sm text-ink-600">
           <input type="checkbox" checked={f.newsletter} onChange={(e) => set('newsletter', e.target.checked)} className="mt-0.5 h-4 w-4 accent-[#0E0D0B]" />
@@ -185,7 +185,9 @@ export default function Account() {
   const nav = useNavigate()
   const { user, ready, isAdmin } = useAuth()
   const mode: Mode = sp.get('mode') === 'inscription' ? 'inscription' : 'connexion'
-  const asked = sp.get('redirect')?.startsWith('/') ? sp.get('redirect')! : null
+  // Redirection après connexion : chemin interne uniquement (bloque //site.com et /\site.com — redirection ouverte)
+  const rawRedirect = sp.get('redirect') ?? ''
+  const asked = /^\/(?![/\\])[^\\]*$/.test(rawRedirect) ? rawRedirect : null
   // Le serveur indique le rôle : gérant → espace gérant, client → espace client
   const target = (admin: boolean | null) => {
     if (admin) return asked && asked.startsWith('/gerant') ? asked : asked && !asked.startsWith('/mon-compte') ? asked : '/gerant'

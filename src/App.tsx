@@ -23,10 +23,21 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 const ResetPassword = lazy(() => import('./pages/ResetPassword'))
 const AdminApp = lazy(() => import('./pages/admin/AdminApp'))
 const Unsubscribe = lazy(() => import('./pages/Unsubscribe'))
+const Conditions = lazy(() => import('./pages/Legal').then((m) => ({ default: m.Conditions })))
+const Confidentialite = lazy(() => import('./pages/Legal').then((m) => ({ default: m.Confidentialite })))
 
 function ScrollTop() {
-  const { pathname } = useLocation()
-  useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior }) }, [pathname])
+  const { pathname, hash } = useLocation()
+  useEffect(() => {
+    if (!hash) { window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior }); return }
+    // Ancre (#livraison…) : la page peut être chargée à la demande → on attend l’élément
+    let n = 0
+    const t = window.setInterval(() => {
+      const el = document.getElementById(decodeURIComponent(hash.slice(1)))
+      if (el || ++n > 30) { window.clearInterval(t); el?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
+    }, 50)
+    return () => window.clearInterval(t)
+  }, [pathname, hash])
   return null
 }
 
@@ -54,6 +65,8 @@ export default function App() {
           <Route path="/mon-compte" element={<Dashboard />} />
           <Route path="/reinitialiser" element={<ResetPassword />} />
           <Route path="/desabonnement" element={<Unsubscribe />} />
+          <Route path="/conditions" element={<Conditions />} />
+          <Route path="/confidentialite" element={<Confidentialite />} />
           <Route path="/gerant/*" element={<AdminApp />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

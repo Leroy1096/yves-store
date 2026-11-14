@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /gerant
+Disallow: /mon-compte
+Disallow: /commande
+Disallow: /reinitialiser
+Disallow: /desabonnement

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- imitation volontairement souple de l’API Supabase (aperçu hors ligne) */
 /**
  * Mode DÉMO HORS LIGNE — utilisé uniquement dans le fichier d’aperçu unique (VITE_SINGLE).
  * Imite les tables et fonctions Supabase dans le navigateur (localStorage) pour que
@@ -391,7 +392,7 @@ function makeSession(u: DemoUser) {
 }
 function setSession(s: any, ev: string) {
   session = s
-  try { s ? localStorage.setItem(SKEY, JSON.stringify(s)) : localStorage.removeItem(SKEY) } catch { /* */ }
+  try { if (s) localStorage.setItem(SKEY, JSON.stringify(s)); else localStorage.removeItem(SKEY) } catch { /* */ }
   setTimeout(() => listeners.forEach((cb) => cb(ev, s)), 0)
 }
 const uid = () => session?.user?.id as string | undefined
@@ -450,6 +451,7 @@ class Query {
         const c = db.catalog_products.find((x) => x.id === l.id); if (!c || !c.active) return fail(`PRODUCT_UNAVAILABLE|${c?.name ?? l.name ?? l.id}`)
         const dl = optDelta(c, l.options); if (typeof dl === 'string') return fail(`OPTION_REQUIRED|${c.name}|${dl}`)
         const opts = Array.isArray(c.price_options) && c.price_options.length ? Object.fromEntries(c.price_options.map((g: Row) => [g.group, l.options[g.group]])) : undefined
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { options: _o, ...rest } = l
         lines.push({ ...rest, ...(opts ? { options: opts } : {}), name: c.name, price: c.price + dl, qty: q }); sub += (c.price + dl) * q; need.set(c.id, (need.get(c.id) ?? 0) + q)
       }
@@ -869,6 +871,7 @@ const functions = {
 // Photos envoyées depuis le back-office : gardées en mémoire (data URL) dans l’aperçu
 const files = new Map<string, string>()
 const storage = {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   from: (_bucket: string) => ({
     upload: (path: string, blob: Blob) => new Promise<{ data: unknown; error: { message: string } | null }>((res) => {
       if (!isAdmin()) return res({ data: null, error: { message: 'new row violates row-level security policy' } })
