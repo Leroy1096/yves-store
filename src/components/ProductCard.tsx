@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import type { Product } from '../data/products'
 import { cn, discount, fcfa, soldLabel, soldPct } from '../lib/format'
 import { useUI, useWishlist } from '../store'
+import { priceRange } from '../lib/options'
 import { Img } from './ui'
 
 interface Props {
@@ -22,6 +23,7 @@ export default function ProductCard({ p, flash = false, trend = false, rank, cla
   const setQuick = useUI((s) => s.setQuick)
   const off = discount(p.price, p.compareAt)
   const pct = soldPct(p.id, p.stock)
+  const range = priceRange(p)
 
   return (
     <article className={cn('group relative flex flex-col', className)}>
@@ -33,6 +35,7 @@ export default function ProductCard({ p, flash = false, trend = false, rank, cla
 
         {!rank && <div className="pointer-events-none absolute left-0 top-2 flex flex-col items-start gap-1">
           {off > 0 && <span className={cn('rounded-r px-1.5 py-0.5 text-[11px] font-bold text-white', flash ? 'bg-red-600' : 'bg-[#E4572E]')}>-{off}%</span>}
+          {!!p.previousPrice && <span data-testid="badge-new-price" className="rounded-r bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Nouveau prix</span>}
           {p.badge && <span className="rounded-r bg-ink px-1.5 py-0.5 text-[10px] font-semibold text-gold-light">{p.badge === 'Best-seller' ? '★ Best-seller' : p.badge}</span>}
         </div>}
         {rank && <span className="pointer-events-none absolute left-2 top-2 grid h-7 min-w-7 place-items-center rounded bg-gold px-1 text-xs font-black text-ink shadow">TOP {rank}</span>}
@@ -60,8 +63,10 @@ export default function ProductCard({ p, flash = false, trend = false, rank, cla
         {trend && p.hashtag && <span className="mb-1 w-fit rounded-sm bg-gold/15 px-1.5 py-0.5 text-[10px] font-bold text-gold-dark">{p.hashtag}</span>}
         <Link to={`/produit/${p.slug}`} className="line-clamp-1 text-[12.5px] leading-snug text-ink-700 hover:text-ink sm:text-[13px]">{p.name}</Link>
         <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5">
-          <span className={cn('text-[15px] font-extrabold tracking-tight', off > 0 ? 'text-red-600' : 'text-ink')}>{fcfa(p.price)}</span>
-          {p.compareAt && <span className="text-[11px] text-ink-400 line-through">{fcfa(p.compareAt)}</span>}
+          {range.min !== range.max && <span className="text-[11px] text-ink-500">Dès</span>}
+          <span className={cn('text-[15px] font-extrabold tracking-tight', off > 0 ? 'text-red-600' : p.previousPrice ? 'text-emerald-700' : 'text-ink')}>{fcfa(range.min)}</span>
+          {p.compareAt ? <span className="text-[11px] text-ink-400 line-through">{fcfa(p.compareAt)}</span>
+            : p.previousPrice ? <span className="text-[11px] text-ink-400 line-through" title="Ancien prix">{fcfa(p.previousPrice)}</span> : null}
         </div>
         {flash ? (
           <div className="mt-1.5">
@@ -72,8 +77,10 @@ export default function ProductCard({ p, flash = false, trend = false, rank, cla
           <div className="mt-1 flex items-center gap-1 overflow-hidden whitespace-nowrap text-[11px] text-ink-400">
             {p.reviewCount > 0 ? (<>
               <Star size={11} className="fill-gold text-gold" /> <span className="font-semibold text-ink-700">{p.rating.toFixed(1).replace('.', ',')}</span>
-              <span className="text-ink/20">|</span> <span>{soldLabel(p.sold)} vendus</span>
-            </>) : <span className="font-semibold text-gold-dark">✨ Nouveauté</span>}
+              <span>({p.reviewCount} avis)</span>
+              {!!p.sold && <><span className="text-ink/20">|</span> <span>{soldLabel(p.sold)} vendus</span></>}
+            </>) : p.addedDaysAgo <= 30 ? <span className="font-semibold text-gold-dark">✨ Nouveauté</span>
+              : p.sold ? <span>{soldLabel(p.sold)} vendus</span> : <span>&nbsp;</span>}
           </div>
         )}
         {p.colors && p.colors.length > 1 && !flash && (

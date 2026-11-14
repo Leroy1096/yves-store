@@ -1,6 +1,7 @@
 // Coordonnées officielles YVES STORE — un seul endroit à modifier si le numéro change
 import type { CartLine } from '../store'
 import { products, getProduct } from '../data/products'
+import { optionsText, unitPrice } from './options'
 import { fcfa } from './format'
 
 /** Numéro WhatsApp au format international, sans + ni espaces (wa.me) */
@@ -61,9 +62,9 @@ export function waContextMessage(pathname: string, lines: CartLine[]): string {
     .map((l) => ({ l, p: products.find((x) => x.id === l.productId) }))
     .filter((x): x is { l: CartLine; p: (typeof products)[number] } => !!x.p)
   if (inCart.length && ['/', '/boutique', '/categories', '/favoris', '/commande'].includes(pathname)) {
-    const total = inCart.reduce((a, { l, p }) => a + l.qty * p.price, 0)
+    const total = inCart.reduce((a, { l, p }) => a + l.qty * unitPrice(p, l.options), 0)
     const list = inCart
-      .map(({ l, p }) => `• ${l.qty} × ${p.name}${[l.size, l.color].filter(Boolean).length ? ` (${[l.size, l.color].filter(Boolean).join(', ')})` : ''} — ${fcfa(l.qty * p.price)}`)
+      .map(({ l, p }) => `• ${l.qty} × ${p.name}${[l.size, l.color, optionsText(l.options)].filter(Boolean).length ? ` (${[l.size, l.color, optionsText(l.options)].filter(Boolean).join(', ')})` : ''} — ${fcfa(l.qty * unitPrice(p, l.options))}`)
       .join('\n')
     return `Bonjour YVES STORE 👋\nJe souhaite commander :\n${list}\nTotal articles : ${fcfa(total)}\nMerci de me confirmer la disponibilité et la livraison.`
   }

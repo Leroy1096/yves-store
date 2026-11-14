@@ -35,7 +35,13 @@ export interface Product {
   sold?: number
   flash?: boolean
   hashtag?: string
+  /** Options qui changent le prix (ex. perruques : Longueur, Qualité) — fixées par le gérant */
+  priceOptions?: PriceOption[]
+  /** Ancien prix si le gérant a baissé le prix il y a moins de 14 jours (badge « Nouveau prix ») */
+  previousPrice?: number
 }
+
+export interface PriceOption { group: string; choices: { label: string; delta: number }[] }
 
 export interface Review {
   id: string

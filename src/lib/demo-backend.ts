@@ -4,7 +4,7 @@
  * l’espace client et l’espace gérant soient utilisables sans Internet.
  * Les données sont fictives et n’ont aucun lien avec la vraie boutique.
  */
-import { categories, products } from '../data/products'
+import { categories, products, seedReviews } from '../data/products'
 
 type Row = Record<string, any>
 interface DemoUser { id: string; email: string; password: string; blocked: boolean; created_at: string; last_sign_in_at: string | null }
@@ -21,6 +21,8 @@ interface DB {
   password_reset_log: Row[]
   news_subscribers?: Row[]
   announcements?: Row[]
+  product_reviews?: Row[]
+  ai_actions_log?: Row[]
   seq: number
 }
 
@@ -302,7 +304,43 @@ function load(): DB {
   try { const raw = JSON.parse(localStorage.getItem(KEY) ?? 'null'); if (raw?.v === DB_VERSION) mem = raw } catch { /* */ }
   if (!mem) { mem = seed(); save() }
   if (!mem.announcements) { seedNews(mem); save() }
+  if (!mem.product_reviews) { seedReviewsAndPrices(mem); save() }
   return mem
+}
+
+// ───────────── Avis clients, « Nouveau prix », options de prix ─────────────
+const short2 = (full: string) => { const [f, ...r] = full.split(' '); return shortName(f, r.join(' ')) }
+function seedReviewsAndPrices(db: DB) {
+  db.ai_actions_log = []
+  db.product_reviews = seedReviews.map((r, i) => ({
+    id: db.seq++, product_id: r.productId, user_id: null, author: short2(r.author), city: r.city.split(',')[0], rating: r.rating, title: r.title, comment: r.body,
+    status: 'publie', reply: null, replied_at: null, seen_by_admin: true, verified_seed: r.verified, created_at: iso((6 + ((i * 37) % 140)) * D + (i % 9) * H), updated_at: iso(6 * D),
+  }))
+  // Exemples : une réponse du gérant, et deux avis récents non lus (dont un négatif)
+  const first = db.product_reviews.find((r) => r.product_id === 'p01'); if (first) Object.assign(first, { reply: 'Merci beaucoup pour votre confiance ! Toute l’équipe YVES STORE vous souhaite une belle utilisation 🙏', replied_at: iso(5 * D) })
+  const aya = db.profiles.find((p) => p.email === 'aya.kone@exemple.ci')
+  const kouassi = db.profiles.find((p) => p !== aya && !db.admins.includes(p.id))
+  if (aya) db.product_reviews.push({ id: db.seq++, product_id: 'p32', user_id: aya.id, rating: 5, title: 'Magnifique perruque', comment: 'La lace est vraiment invisible, les cheveux sont doux et ne s’emmêlent pas. Livrée en 24 h à Cocody. Je recommande la qualité Premium !', status: 'publie', reply: null, replied_at: null, seen_by_admin: false, created_at: iso(5 * H), updated_at: iso(5 * H) })
+  if (kouassi) db.product_reviews.push({ id: db.seq++, product_id: 'p05', user_id: kouassi.id, rating: 2, title: 'Câble trop court', comment: 'Le câble charge bien mais il est plus court que ce que j’imaginais. Dommage, la description devrait préciser la longueur.', status: 'publie', reply: null, replied_at: null, seen_by_admin: false, created_at: iso(26 * H), updated_at: iso(26 * H) })
+  // Perruque : prix selon la longueur et la qualité
+  const wig = db.catalog_products.find((c) => c.id === 'p32')
+  if (wig) wig.price_options = [
+    { group: 'Longueur', choices: [{ label: '18 pouces', delta: 0 }, { label: '22 pouces', delta: 10000 }, { label: '26 pouces', delta: 20000 }] },
+    { group: 'Qualité', choices: [{ label: 'Standard', delta: 0 }, { label: 'Premium (densité 250 %)', delta: 15000 }] },
+  ]
+  // « Nouveau prix » : le gérant a baissé deux prix cette semaine
+  for (const [id, before, days] of [['p02', 12000, 3], ['p20', 9500, 1]] as const) {
+    const c = db.catalog_products.find((x) => x.id === id); if (c && c.price < before) Object.assign(c, { previous_price: before, price_changed_at: iso(days * D) })
+  }
+}
+const reviewVerified = (db: DB, r: Row) => r.user_id ? db.orders.some((o) => o.user_id === r.user_id && o.status !== 'annulee' && (o.lines ?? []).some((l: Row) => l.id === r.product_id)) : !!r.verified_seed
+const reviewAuthor = (db: DB, r: Row, full = false) => { if (!r.user_id) return r.author; const p = db.profiles.find((x) => x.id === r.user_id); return full ? (`${p?.first_name ?? ''} ${p?.last_name ?? ''}`.trim() || 'Client') : shortName(p?.first_name, p?.last_name) }
+const reviewCity = (db: DB, r: Row) => r.user_id ? db.profiles.find((x) => x.id === r.user_id)?.city ?? null : r.city
+const optDelta = (c: Row, picks: Row | undefined): number | string => {
+  if (!Array.isArray(c.price_options) || !c.price_options.length) return 0
+  let d = 0
+  for (const g of c.price_options) { const ch = g.choices.find((x: Row) => x.label === picks?.[g.group]); if (!ch) return g.group; d += ch.delta }
+  return d
 }
 
 // ───────────── Nouveautés (abonnés + annonces) ─────────────
@@ -341,7 +379,7 @@ function newsAudience(db: DB) {
   return [...clients, ...site].sort((a, b) => (a.since < b.since ? 1 : -1))
 }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(mem)) } catch { /* quota */ } }
-export function resetDemo() { mem = seed(); save(); try { localStorage.removeItem(SKEY); localStorage.removeItem('yves-catalog-v2') } catch { /* */ } }
+export function resetDemo() { mem = seed(); seedNews(mem); seedReviewsAndPrices(mem); save(); try { localStorage.removeItem(SKEY); localStorage.removeItem('yves-catalog-v2') } catch { /* */ } }
 
 // ───────────── Session ─────────────
 let session: any = null
@@ -394,7 +432,7 @@ class Query {
     if (t === 'catalog_categories') return db.catalog_categories
     if (t === 'profiles') return db.profiles.filter((p) => p.id === uid() || isAdmin())
     if (t === 'orders') return db.orders.filter((o) => isAdmin() || (uid() && o.user_id === uid()))
-    if (t === 'stock_movements' || t === 'whatsapp_requests' || t === 'password_reset_log' || t === 'announcements' || t === 'news_subscribers') return isAdmin() ? ((db[t] ?? []) as Row[]) : []
+    if (t === 'stock_movements' || t === 'whatsapp_requests' || t === 'password_reset_log' || t === 'announcements' || t === 'news_subscribers' || t === 'ai_actions_log' || t === 'product_reviews') return isAdmin() ? ((db[t] ?? []) as Row[]) : []
     return []
   }
   private exec(): Promise<Res> {
@@ -410,7 +448,10 @@ class Query {
       for (const l of (o.lines ?? []) as Row[]) {
         const q = Number(l.qty); if (!Number.isInteger(q) || q < 1 || q > 99) return fail('INVALID_QTY')
         const c = db.catalog_products.find((x) => x.id === l.id); if (!c || !c.active) return fail(`PRODUCT_UNAVAILABLE|${c?.name ?? l.name ?? l.id}`)
-        lines.push({ ...l, name: c.name, price: c.price, qty: q }); sub += c.price * q; need.set(c.id, (need.get(c.id) ?? 0) + q)
+        const dl = optDelta(c, l.options); if (typeof dl === 'string') return fail(`OPTION_REQUIRED|${c.name}|${dl}`)
+        const opts = Array.isArray(c.price_options) && c.price_options.length ? Object.fromEntries(c.price_options.map((g: Row) => [g.group, l.options[g.group]])) : undefined
+        const { options: _o, ...rest } = l
+        lines.push({ ...rest, ...(opts ? { options: opts } : {}), name: c.name, price: c.price + dl, qty: q }); sub += (c.price + dl) * q; need.set(c.id, (need.get(c.id) ?? 0) + q)
       }
       if (!lines.length) return fail('EMPTY_CART')
       for (const [id, q] of need) { const c = db.catalog_products.find((x) => x.id === id)!; if (c.stock < q) return fail(`OUT_OF_STOCK|${c.name}|${c.stock}`) }
@@ -526,11 +567,83 @@ async function rpc(name: string, a: Row = {}): Promise<Res> {
     case 'admin_update_product': {
       if (!admin) return need()!
       const c = db.catalog_products.find((x) => x.id === a.p_id); if (!c) return fail('NOT_FOUND')
-      if (a.p_price != null) c.price = a.p_price
+      if (a.p_price != null && a.p_price !== c.price) {
+        // Baisse → badge « Nouveau prix » 14 jours (on garde le prix le plus haut d’avant) ; hausse → badge retiré
+        if (a.p_price < c.price) { const recent = c.price_changed_at && Date.now() - new Date(c.price_changed_at).getTime() < 14 * D; c.previous_price = Math.max(c.price, recent ? c.previous_price ?? 0 : 0); c.price_changed_at = iso() }
+        else { c.previous_price = null; c.price_changed_at = null }
+        c.price = a.p_price
+      }
       c.compare_at = a.p_compare_at ?? null
       if (a.p_active != null) c.active = a.p_active
       if (a.p_low != null) c.low_stock_threshold = a.p_low
       c.updated_at = iso(); return out(c)
+    }
+    case 'admin_set_price_options': {
+      if (!admin) return need()!
+      const c = db.catalog_products.find((x) => x.id === a.p_id); if (!c) return fail('Produit introuvable')
+      const opts = Array.isArray(a.p_options) ? a.p_options : []
+      if (!opts.length) { c.price_options = null; c.updated_at = iso(); return out(c) }
+      if (opts.length > 3) return fail('Maximum 3 options (ex. Longueur, Qualité, Couleur)')
+      for (const g of opts) {
+        const gn = String(g.group ?? '').trim(); if (!gn || gn.length > 30) return fail('Nom d’option invalide')
+        if (!Array.isArray(g.choices) || g.choices.length < 2 || g.choices.length > 12) return fail(`Chaque option doit avoir entre 2 et 12 choix (« ${gn} »)`)
+        const seen = new Set<string>()
+        for (const ch of g.choices) {
+          const l = String(ch.label ?? '').trim(); if (!l || l.length > 30) return fail(`Choix invalide dans « ${gn} »`)
+          if (seen.has(l)) return fail(`Choix en double dans « ${gn} »`); seen.add(l)
+          if (!Number.isInteger(ch.delta) || ch.delta > 1000000 || c.price + ch.delta < 100) return fail(`Supplément invalide pour « ${l} »`)
+        }
+      }
+      c.price_options = opts.map((g: Row) => ({ group: String(g.group).trim(), choices: g.choices.map((ch: Row) => ({ label: String(ch.label).trim(), delta: ch.delta })) }))
+      c.updated_at = iso(); return out(c)
+    }
+    case 'public_product_reviews': {
+      const me = uid()
+      return out((db.product_reviews ?? []).filter((r) => r.product_id === a.p_product && (r.status === 'publie' || (me && r.user_id === me)))
+        .sort((x, y) => Number(y.user_id === me && !!me) - Number(x.user_id === me && !!me) || (x.created_at < y.created_at ? 1 : -1))
+        .map((r) => ({ id: r.id, author: reviewAuthor(db, r), city: reviewCity(db, r), rating: r.rating, title: r.title, comment: r.comment, verified: reviewVerified(db, r), reply: r.reply, replied_at: r.replied_at, created_at: r.created_at, mine: !!me && r.user_id === me, hidden: r.status === 'masque' })))
+    }
+    case 'product_review_stats': {
+      const m = new Map<string, number[]>()
+      for (const r of db.product_reviews ?? []) if (r.status === 'publie') { const x = m.get(r.product_id) ?? []; x.push(r.rating); m.set(r.product_id, x) }
+      return out([...m.entries()].map(([id, rs]) => ({ product_id: id, avg_rating: Math.round((rs.reduce((t, v) => t + v, 0) / rs.length) * 10) / 10, review_count: rs.length, dist: [5, 4, 3, 2, 1].map((n) => rs.filter((v) => v === n).length) })))
+    }
+    case 'submit_review': {
+      const me = uid(); if (!me) return fail('NOT_AUTHENTICATED')
+      if (admin) return fail('ADMIN_CANNOT_REVIEW')
+      if (!db.catalog_products.some((c) => c.id === a.p_product && c.active)) return fail('PRODUCT_UNAVAILABLE')
+      const rating = Number(a.p_rating); if (!Number.isInteger(rating) || rating < 1 || rating > 5) return fail('INVALID_RATING')
+      const comment = String(a.p_comment ?? '').trim(); if (comment.length < 10 || comment.length > 1000) return fail('INVALID_COMMENT')
+      const title = String(a.p_title ?? '').trim().slice(0, 80) || null
+      const list = (db.product_reviews ??= [])
+      const ex = list.find((r) => r.product_id === a.p_product && r.user_id === me)
+      if (ex) Object.assign(ex, { rating, title, comment, updated_at: iso(), seen_by_admin: false })
+      else list.push({ id: db.seq++, product_id: a.p_product, user_id: me, rating, title, comment, status: 'publie', reply: null, replied_at: null, seen_by_admin: false, created_at: iso(), updated_at: iso() })
+      return out(ex?.id ?? list[list.length - 1].id)
+    }
+    case 'delete_my_review': { const me = uid(); db.product_reviews = (db.product_reviews ?? []).filter((r) => !(r.product_id === a.p_product && me && r.user_id === me)); return out(null) }
+    case 'admin_list_reviews': {
+      if (!admin) return need()!
+      return out([...(db.product_reviews ?? [])].sort((x, y) => (x.created_at < y.created_at ? 1 : -1)).slice(0, 500).map((r) => ({
+        id: r.id, product_id: r.product_id, product_name: db.catalog_products.find((c) => c.id === r.product_id)?.name ?? r.product_id, author: reviewAuthor(db, r, true), rating: r.rating, title: r.title, comment: r.comment,
+        status: r.status, reply: r.reply, replied_at: r.replied_at, created_at: r.created_at, seen: r.seen_by_admin, verified: reviewVerified(db, r) })))
+    }
+    case 'admin_review_action': {
+      if (!admin) return need()!
+      if (a.p_status != null && !['publie', 'masque'].includes(a.p_status)) return fail('INVALID_STATUS')
+      const r = (db.product_reviews ?? []).find((x) => x.id === a.p_id)
+      if (r) {
+        if (a.p_status) r.status = a.p_status
+        if (a.p_reply != null) { const t = String(a.p_reply).trim().slice(0, 600); r.reply = t || null; r.replied_at = t ? iso() : null }
+        r.seen_by_admin = true
+      }
+      return out(null)
+    }
+    case 'admin_mark_reviews_seen': { if (!admin) return need()!; (db.product_reviews ?? []).forEach((r) => { r.seen_by_admin = true }); return out(null) }
+    case 'admin_log_ai_action': {
+      if (!admin) return need()!
+      ;(db.ai_actions_log ??= []).unshift({ id: db.seq++, action: String(a.p_action).slice(0, 40), summary: String(a.p_summary).slice(0, 600), auto: !!a.p_auto, ok: a.p_ok !== false, created_by: uid(), created_at: iso() })
+      return out(null)
     }
     case 'admin_stats_series': {
       if (!admin) return ok([])

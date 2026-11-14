@@ -25,6 +25,7 @@ function orderErrorMessage(msg: string) {
   const [code, name, left] = msg.split('|')
   if (code.includes('OUT_OF_STOCK')) return Number(left) > 0 ? `Stock insuffisant pour « ${name} » : ${Number(left) === 1 ? 'il n’en reste qu’un seul' : `il n’en reste que ${left}`}. Modifiez la quantité dans votre panier.` : `« ${name} » vient d’être épuisé. Retirez-le de votre panier pour continuer.`
   if (code.includes('PRODUCT_UNAVAILABLE')) return `« ${name} » n’est plus disponible. Retirez-le de votre panier pour continuer.`
+  if (code.includes('OPTION_REQUIRED')) return `Les options de « ${name} » ont changé (${left}). Retirez l’article du panier puis rajoutez-le en choisissant à nouveau.`
   if (code.includes('INVALID_QTY')) return 'Une quantité de votre panier est invalide (1 à 99 par article).'
   if (code.includes('INVALID_SHIPPING')) return 'Mode de livraison invalide. Choisissez-en un à nouveau.'
   if (/jwt|auth|permission|row-level|policy/i.test(msg)) return 'Votre session a expiré. Reconnectez-vous pour valider la commande.'
@@ -85,7 +86,7 @@ export default function Checkout() {
   const payment = PAYMENTS.find((p) => p.id === f.payment)!
   // Commande sur WhatsApp — réservée aux clients connectés (la page Commande exige un compte)
   const waOrderMessage = () => {
-    const list = items.map((l) => `• ${l.qty} × ${l.product.name}${[l.size, l.color].filter(Boolean).length ? ` (${[l.size, l.color].filter(Boolean).join(', ')})` : ''} — ${fcfa(l.qty * l.product.price)}`).join('\n')
+    const list = items.map((l) => `• ${l.qty} × ${l.product.name}${l.variant ? ` (${l.variant.replace(/ · /g, ', ')})` : ''} — ${fcfa(l.qty * l.unit)}`).join('\n')
     const where = f.shipping === 'retrait' ? 'Retrait en boutique' : [f.details, f.city === 'Abidjan' ? f.commune : '', f.city].filter(Boolean).join(', ')
     return [
       'Bonjour YVES STORE 👋',
@@ -143,7 +144,7 @@ export default function Checkout() {
       customer: { firstName: f.firstName.trim(), lastName: f.lastName.trim(), phone: f.phone, email: f.email },
       address: { city: f.city, commune: f.city === 'Abidjan' ? f.commune : '', details: f.details },
       shipping: f.shipping, payment: payment.label,
-      lines: items.map((l) => ({ id: l.product.id, name: l.product.name, qty: l.qty, price: l.product.price, image: l.product.images[0], size: l.size, color: l.color })),
+      lines: items.map((l) => ({ id: l.product.id, name: l.product.name, qty: l.qty, price: l.unit, image: l.product.images[0], size: l.size, color: l.color, ...(l.options ? { options: l.options } : {}) })),
       subtotal, discount, shippingCost, total,
     }
     // Seuls les clients inscrits et connectés peuvent commander (vérifié aussi par le serveur)
@@ -199,8 +200,8 @@ export default function Checkout() {
               <Img src={l.product.images[0]} alt={l.product.name} className="h-20 w-16 rounded-xl object-cover" />
               <span className="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full bg-ink text-[11px] font-bold text-ivory">{l.qty}</span>
             </div>
-            <div className="min-w-0 flex-1"><p className="truncate font-medium">{l.product.name}</p><p className="text-xs text-ink-400">{[l.color, l.size].filter(Boolean).join(' · ')}</p></div>
-            <p className="text-sm font-semibold">{fcfa(l.qty * l.product.price)}</p>
+            <div className="min-w-0 flex-1"><p className="truncate font-medium">{l.product.name}</p><p className="text-xs text-ink-400">{l.variant}</p></div>
+            <p className="text-sm font-semibold">{fcfa(l.qty * l.unit)}</p>
           </li>
         ))}
       </ul>

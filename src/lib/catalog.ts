@@ -4,7 +4,7 @@
  * (`catalog_products`, `catalog_categories`) et s'appliquent au catalogue statique.
  */
 import { create } from 'zustand'
-import { categories, products, type Category, type Product } from '../data/products'
+import { categories, products, type Category, type PriceOption, type Product } from '../data/products'
 import { shortCat } from '../data/nav'
 import { supabase, supabaseReady } from './supabase'
 
@@ -33,6 +33,11 @@ export interface CatalogRow {
   colors?: { name: string; hex: string }[] | null
   gender?: 'Homme' | 'Femme' | 'Unisexe' | null
   created_at?: string
+  /** Options qui changent le prix (perruques : Longueur, Qualité…) */
+  price_options?: PriceOption[] | null
+  /** Prix avant la dernière baisse + date (badge « Nouveau prix » pendant 14 jours) */
+  previous_price?: number | null
+  price_changed_at?: string | null
 }
 export interface CategoryRow { id: string; name: string; tagline: string; custom: boolean; created_at?: string }
 
@@ -56,6 +61,11 @@ function customProduct(r: CatalogRow): Product {
   }
 }
 
+/** Baisse de prix de moins de 14 jours → badge « Nouveau prix » */
+export const NEW_PRICE_DAYS = 14
+export const priceDropped = (r: Pick<CatalogRow, 'price' | 'previous_price' | 'price_changed_at'>) =>
+  !!r.previous_price && r.previous_price > r.price && !!r.price_changed_at && Date.now() - new Date(r.price_changed_at).getTime() < NEW_PRICE_DAYS * 86400000
+
 let lastSig = ''
 export function applyCatalog(rows: CatalogRow[], cats: CategoryRow[] = []) {
   // Catégories créées par le gérant
@@ -78,6 +88,8 @@ export function applyCatalog(rows: CatalogRow[], cats: CategoryRow[] = []) {
     p.price = r.price
     p.compareAt = r.compare_at ?? undefined
     p.stock = r.stock
+    p.priceOptions = Array.isArray(r.price_options) && r.price_options.length ? r.price_options : undefined
+    p.previousPrice = priceDropped(r) ? r.previous_price! : undefined
   }
   const visible = allProducts.filter((p) => byId.get(p.id)?.active !== false && (!p.id.startsWith('n') || byId.has(p.id)))
   products.splice(0, products.length, ...visible)

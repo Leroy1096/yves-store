@@ -4,6 +4,7 @@ import { BrowserRouter, HashRouter, MemoryRouter } from 'react-router-dom'
 import App from './App'
 import './index.css'
 import { initCatalog } from './lib/catalog'
+import { initReviewStats } from './lib/reviews'
 
 const SINGLE = import.meta.env.VITE_SINGLE === '1'
 
@@ -27,7 +28,7 @@ if (SINGLE) {
 // Fichier unique : routage par # ; en mémoire si la page n’a pas d’adresse (about:srcdoc)
 const Router = SINGLE ? (location.protocol === 'about:' ? MemoryRouter : HashRouter) : BrowserRouter
 
-initCatalog().finally(() => createRoot(document.getElementById('root')!).render(
+initCatalog().finally(() => { initReviewStats() }).finally(() => createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <App />

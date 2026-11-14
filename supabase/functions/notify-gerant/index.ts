@@ -1,4 +1,4 @@
-// YVES STORE — e-mails d'alerte au gérant (nouvelle commande, annulation, demande client, inscription)
+// YVES STORE — e-mails d'alerte au gérant (nouvelle commande, annulation, demande client, inscription, avis client)
 // Appelée UNIQUEMENT par la base de données (triggers + pg_net) avec l'en-tête secret x-notify-secret.
 // Le corps ne contient que { kind, ref } : la fonction relit l'enregistrement elle-même (service role).
 // Envoi via Resend (RESEND_API_KEY, clé « Sending access »). Jamais de code ni de mot de passe dans les e-mails.
@@ -48,8 +48,8 @@ Deno.serve(async (req) => {
   // ── Test de la chaîne complète ──
   if (body.kind === 'test') {
     return json(await send('✅ Alertes e-mail YVES STORE activées',
-      frame('Alertes activées ✅', `<p style="font-size:15px;line-height:1.6">Vous recevrez désormais un e-mail à chaque :</p><ul style="font-size:14px;line-height:1.8"><li>🛍️ nouvelle commande</li><li>❌ commande annulée</li><li>💬 demande d’un client (suivi, annulation, aide, code mot de passe)</li><li>👤 nouvelle inscription</li></ul>`, 'Aucune action nécessaire.'),
-      'Alertes e-mail YVES STORE activées : nouvelle commande, annulation, demande client, nouvelle inscription.'))
+      frame('Alertes activées ✅', `<p style="font-size:15px;line-height:1.6">Vous recevrez désormais un e-mail à chaque :</p><ul style="font-size:14px;line-height:1.8"><li>🛍️ nouvelle commande</li><li>❌ commande annulée</li><li>💬 demande d’un client (suivi, annulation, aide, code mot de passe)</li><li>👤 nouvelle inscription</li><li>⭐ nouvel avis client sur un article</li></ul>`, 'Aucune action nécessaire.'),
+      'Alertes e-mail YVES STORE activées : nouvelle commande, annulation, demande client, nouvelle inscription, avis client.'))
   }
 
   // ── Commandes ──
@@ -106,6 +106,30 @@ ${r.kind === 'reset_password' ? '<p style="font-size:13px;color:#77716a">Le code
 ${row('Client', esc(who))}${row('Ville', esc(p.city || 'Non renseignée'))}${row('Inscrit avec', p.signup_method === 'phone' ? 'Numéro de téléphone' : 'Adresse e-mail')}${row('Le', esc(when(p.created_at)))}${row('Comptes au total', String(count ?? '—'))}</table>`,
       'Idée : souhaitez-lui la bienvenue et rappelez le code BIENVENUE (−5 000 FCFA dès 30 000 FCFA).')
     return json(await send(`👤 Nouveau client inscrit — ${who}`, html, `Nouveau client inscrit : ${who} (${p.city || 'ville non renseignée'}). Comptes au total : ${count ?? '—'}.`))
+  }
+
+  // ── Nouvel avis client ──
+  if (body.kind === 'review_new') {
+    const { data: r } = await db.from('product_reviews').select('id,product_id,user_id,rating,title,comment,created_at').eq('id', ref).maybeSingle()
+    if (!r) return json({ ok: false, error: 'NOT_FOUND' })
+    const [{ data: n }, { data: prod }, { data: stats }] = await Promise.all([
+      db.rpc('short_name', { p_user: r.user_id }),
+      db.from('catalog_products').select('name,price').eq('id', r.product_id).maybeSingle(),
+      db.from('product_reviews').select('rating').eq('product_id', r.product_id).eq('status', 'publie'),
+    ])
+    const who = n || 'Client'
+    const stars = '★'.repeat(r.rating) + '☆'.repeat(5 - r.rating)
+    const list = (stats ?? []) as { rating: number }[]
+    const avg = list.length ? (list.reduce((s, x) => s + x.rating, 0) / list.length).toFixed(1).replace('.', ',') : '—'
+    const low = r.rating <= 2
+    const html = frame(`${low ? '⚠️' : '⭐'} Nouvel avis — ${esc(prod?.name ?? r.product_id)}`, `<p style="margin:0 0 12px;font-size:26px;color:#B8893B;letter-spacing:3px">${stars}</p>
+${r.title ? `<p style="margin:0 0 8px;font-size:16px;font-weight:bold">« ${esc(r.title)} »</p>` : ''}
+<p style="margin:0 0 16px;font-size:15px;line-height:1.6;background:#F7F3EC;border-radius:12px;padding:14px 16px">${esc(String(r.comment).slice(0, 1000))}</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${row('Client', esc(who))}${row('Article', esc(prod?.name ?? r.product_id))}${row('Le', esc(when(r.created_at)))}${row('Note moyenne de l’article', `${avg} / 5 (${list.length} avis)`)}</table>
+${low ? '<p style="font-size:13px;color:#a1352b">Avis négatif : une réponse rapide et polie rassure les autres clients.</p>' : ''}`,
+      'Espace gérant → Avis clients : répondre ou masquer l’avis.')
+    return json(await send(`${low ? '⚠️' : '⭐'} Avis ${r.rating}/5 — ${prod?.name ?? r.product_id} (${who})`, html,
+      `Nouvel avis ${r.rating}/5 sur ${prod?.name ?? r.product_id}\nClient : ${who}\n${r.title ? r.title + '\n' : ''}${r.comment}\nEspace gérant → Avis clients.`))
   }
 
   return json({ ok: false, error: 'UNKNOWN_KIND' }, 400)

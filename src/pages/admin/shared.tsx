@@ -7,7 +7,7 @@ import { supabase } from '../../lib/supabase'
 import { orderMessage, type WaRequest } from '../../lib/whatsapp'
 
 // ───────────── Types ─────────────
-export interface AdminOrderLine { id?: string; name: string; qty: number; price: number; image?: string; size?: string; color?: string }
+export interface AdminOrderLine { id?: string; name: string; qty: number; price: number; image?: string; size?: string; color?: string; options?: Record<string, string> }
 export interface AdminOrder {
   id: string
   user_id: string | null

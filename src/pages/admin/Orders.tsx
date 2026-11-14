@@ -52,7 +52,7 @@ function OrderRow({ o, onUpdated }: { o: AdminOrder; onUpdated: (o: AdminOrder) 
               <ul className="divide-y divide-ink/5 rounded-xl bg-white px-3">
                 {o.lines.map((l, i) => (
                   <li key={i} className="flex items-center gap-3 py-2.5 text-sm">
-                    <span className="flex-1"><b className="font-semibold">{l.name}</b> <span className="text-ink-400">{[l.color, l.size].filter(Boolean).join(' · ')}</span></span>
+                    <span className="flex-1"><b className="font-semibold">{l.name}</b> <span className="text-ink-400">{[l.color, l.size, ...Object.values(l.options ?? {})].filter(Boolean).join(' · ')}</span></span>
                     <span className="text-ink-500">{l.qty} × {fcfa(l.price)}</span>
                     <span className="w-24 text-right font-semibold tabular-nums">{fcfa(l.qty * l.price)}</span>
                   </li>

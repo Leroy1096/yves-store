@@ -22,7 +22,7 @@ import { useAuth, type Profile } from '../store/auth'
 
 interface DbOrder {
   id: string; status: string; created_at: string; shipping: ShippingId; payment: string
-  lines: { name: string; qty: number; price: number; image: string; size?: string; color?: string }[]
+  lines: { name: string; qty: number; price: number; image: string; size?: string; color?: string; options?: Record<string, string> }[]
   address: { city: string; commune: string; details: string }
   subtotal: number; discount: number; shipping_cost: number; total: number
   cancelled_at?: string | null; cancel_reason?: string | null
@@ -117,7 +117,7 @@ function OrderCard({ o, defaultOpen = false, onChange }: { o: DbOrder; defaultOp
                 {o.lines.map((l, i) => (
                   <li key={i} className="flex items-center gap-3 py-2.5 text-sm">
                     <Img src={l.image} alt={l.name} className="h-12 w-10 rounded-md object-cover" />
-                    <span className="flex-1">{l.name} <span className="text-ink-400">{[l.color, l.size].filter(Boolean).join(' · ')} × {l.qty}</span></span>
+                    <span className="flex-1">{l.name} <span className="text-ink-400">{[l.color, l.size, ...Object.values(l.options ?? {})].filter(Boolean).join(' · ')} × {l.qty}</span></span>
                     <span className="font-medium">{fcfa(l.price * l.qty)}</span>
                   </li>
                 ))}

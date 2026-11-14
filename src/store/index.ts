@@ -2,8 +2,9 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { products, type Review } from '../data/products'
 import type { ShippingId } from '../lib/format'
+import { optionsText, unitPrice, type OptionPick } from '../lib/options'
 
-export interface CartLine { key: string; productId: string; qty: number; size?: string; color?: string }
+export interface CartLine { key: string; productId: string; qty: number; size?: string; color?: string; options?: OptionPick }
 
 interface CartState {
   lines: CartLine[]
@@ -22,12 +23,13 @@ export const useCart = create<CartState>()(
       promo: null,
       add: (l, qty = 1) =>
         set((s) => {
-          const key = [l.productId, l.size, l.color].filter(Boolean).join('|')
+          const opts = l.options && Object.keys(l.options).length ? l.options : undefined
+          const key = [l.productId, l.size, l.color, ...Object.entries(opts ?? {}).sort().map(([g, v]) => `${g}=${v}`)].filter(Boolean).join('|')
           const stock = products.find((p) => p.id === l.productId)?.stock ?? 99
           if (stock <= 0) return s // article épuisé
           const ex = s.lines.find((x) => x.key === key)
           if (ex) return { lines: s.lines.map((x) => (x.key === key ? { ...x, qty: Math.min(stock, x.qty + qty) } : x)) }
-          return { lines: [...s.lines, { ...l, key, qty: Math.min(stock, qty) }] }
+          return { lines: [...s.lines, { ...l, options: opts, key, qty: Math.min(stock, qty) }] }
         }),
       setQty: (key, qty) =>
         set((s) => ({ lines: qty <= 0 ? s.lines.filter((x) => x.key !== key) : s.lines.map((x) => (x.key === key ? { ...x, qty } : x)) })),
@@ -41,11 +43,15 @@ export const useCart = create<CartState>()(
 
 export const cartDetailed = (lines: CartLine[]) =>
   lines
-    .map((l) => ({ ...l, product: products.find((p) => p.id === l.productId)! }))
+    .map((l) => {
+      const product = products.find((p) => p.id === l.productId)!
+      // Prix unitaire = prix de base + suppléments des options (recalculé par le serveur à la commande)
+      return { ...l, product, unit: product ? unitPrice(product, l.options) : 0, variant: [l.color, l.size, optionsText(l.options)].filter(Boolean).join(' · ') }
+    })
     .filter((l) => l.product)
 
 export const cartCount = (lines: CartLine[]) => lines.filter((l) => products.some((p) => p.id === l.productId)).reduce((a, l) => a + l.qty, 0)
-export const cartSubtotal = (lines: CartLine[]) => cartDetailed(lines).reduce((a, l) => a + l.qty * l.product.price, 0)
+export const cartSubtotal = (lines: CartLine[]) => cartDetailed(lines).reduce((a, l) => a + l.qty * l.unit, 0)
 
 interface WishState { ids: string[]; toggle: (id: string) => void }
 export const useWishlist = create<WishState>()(
@@ -67,7 +73,7 @@ export interface Order {
   address: { city: string; commune: string; details: string }
   shipping: ShippingId
   payment: string
-  lines: { id?: string; name: string; qty: number; price: number; image: string; size?: string; color?: string }[]
+  lines: { id?: string; name: string; qty: number; price: number; image: string; size?: string; color?: string; options?: OptionPick }[]
   subtotal: number
   discount: number
   shippingCost: number

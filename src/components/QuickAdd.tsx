@@ -5,6 +5,8 @@ import { Link } from 'react-router-dom'
 import { products } from '../data/products'
 import { cn, discount, fcfa } from '../lib/format'
 import { useCart, useUI } from '../store'
+import { defaultPick, unitPrice, visibleSizes, type OptionPick } from '../lib/options'
+import OptionPicker from './OptionPicker'
 import { Img, Stars } from './ui'
 
 /** Fenêtre « Ajout rapide » : choix couleur / taille sans quitter la page (comme sur Shein) */
@@ -20,12 +22,14 @@ export default function QuickAdd() {
   const [size, setSize] = useState<string>()
   const [qty, setQty] = useState(1)
   const [err, setErr] = useState(false)
+  const [pick, setPick] = useState<OptionPick>({})
 
   useEffect(() => {
     if (!p) return
     setImg(0); setQty(1); setErr(false)
     setColor(p.colors?.[0]?.name)
     setSize(p.sizes?.length === 1 ? p.sizes[0] : undefined)
+    setPick(defaultPick(p))
   }, [p])
   useEffect(() => {
     document.body.style.overflow = p ? 'hidden' : ''
@@ -34,11 +38,12 @@ export default function QuickAdd() {
     return () => window.removeEventListener('keydown', k)
   }, [p, setQuick])
 
+  const sizes = p ? visibleSizes(p) : undefined
   const submit = () => {
     if (!p) return
     if (p.stock <= 0) return
-    if (p.sizes?.length && !size) { setErr(true); return }
-    add({ productId: p.id, size, color }, qty)
+    if (sizes?.length && !size) { setErr(true); return }
+    add({ productId: p.id, size: sizes ? size : undefined, color, options: p.priceOptions?.length ? pick : undefined }, qty)
     notify(`${p.name} ajouté au panier`, p.images[0])
     setQuick(null)
     openCart()
@@ -61,7 +66,7 @@ export default function QuickAdd() {
                 <div className="aspect-[3/4] w-28 shrink-0 overflow-hidden rounded-xl bg-ivory-200 sm:w-full"><Img src={p.images[img]} alt={p.name} className="h-full w-full object-cover" /></div>
                 <div className="flex min-w-0 flex-col justify-end sm:hidden">
                   <p className="line-clamp-2 pr-8 text-sm">{p.name}</p>
-                  <p className={cn('mt-1 text-xl font-extrabold', !!p.compareAt && 'text-red-600')}>{fcfa(p.price)}</p>
+                  <p className={cn('mt-1 text-xl font-extrabold', !!p.compareAt && 'text-red-600')}>{fcfa(unitPrice(p, pick))}</p>
                   {p.compareAt && <p className="text-xs text-ink-400"><s>{fcfa(p.compareAt)}</s> <b className="text-red-600">-{discount(p.price, p.compareAt)}%</b></p>}
                 </div>
                 <div className="mt-2 hidden gap-2 sm:flex">
@@ -71,9 +76,10 @@ export default function QuickAdd() {
               <div className="flex flex-col">
                 <div className="hidden sm:block">
                   <p className="pr-10 text-lg leading-snug">{p.name}</p>
-                  <div className="mt-1 flex items-center gap-2 text-xs text-ink-500"><Stars value={p.rating} size={12} /> {p.reviewCount} avis</div>
+                  {p.reviewCount > 0 && <div className="mt-1 flex items-center gap-2 text-xs text-ink-500"><Stars value={p.rating} size={12} /> {p.reviewCount} avis</div>}
                   <div className="mt-3 flex items-baseline gap-2">
-                    <span className={cn('text-2xl font-extrabold', !!p.compareAt && 'text-red-600')}>{fcfa(p.price)}</span>
+                    <span className={cn('text-2xl font-extrabold', !!p.compareAt && 'text-red-600')}>{fcfa(unitPrice(p, pick))}</span>
+                    {!!p.previousPrice && <span className="rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold uppercase text-white">Nouveau prix</span>}
                     {p.compareAt && <><s className="text-sm text-ink-400">{fcfa(p.compareAt)}</s><span className="rounded bg-red-600 px-1.5 py-0.5 text-xs font-bold text-white">-{discount(p.price, p.compareAt)}%</span></>}
                   </div>
                 </div>
@@ -85,11 +91,12 @@ export default function QuickAdd() {
                     </div>
                   </div>
                 )}
-                {p.sizes && (
+                <OptionPicker p={p} pick={pick} onPick={setPick} compact />
+                {sizes && (
                   <div className="mt-4">
                     <p className={cn('text-sm', err && 'font-semibold text-red-600')}>{p.sizeLabel ?? 'Taille'} : {size ? <b>{size}</b> : err ? 'veuillez choisir' : <span className="text-ink-400">sélectionnez</span>}</p>
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {p.sizes.map((s) => <button key={s} onClick={() => { setSize(s); setErr(false) }} className={cn('min-w-[48px] rounded-full border px-3.5 py-2 text-sm transition', size === s ? 'border-ink bg-ink text-ivory' : err ? 'border-red-300' : 'border-ink/15 hover:border-ink')}>{s}</button>)}
+                      {sizes.map((s) => <button key={s} onClick={() => { setSize(s); setErr(false) }} className={cn('min-w-[48px] rounded-full border px-3.5 py-2 text-sm transition', size === s ? 'border-ink bg-ink text-ivory' : err ? 'border-red-300' : 'border-ink/15 hover:border-ink')}>{s}</button>)}
                     </div>
                   </div>
                 )}
@@ -102,7 +109,7 @@ export default function QuickAdd() {
                   </div>
                   {p.stock > 0 && p.stock <= 12 && <span className="text-xs font-semibold text-red-600">Plus que {p.stock} !</span>}
                 </div>
-                <button onClick={submit} disabled={p.stock <= 0} className="mt-6 w-full rounded-full bg-ink py-3.5 text-sm font-bold uppercase tracking-wider text-ivory transition hover:bg-gold hover:text-ink disabled:cursor-not-allowed disabled:opacity-50">{p.stock <= 0 ? 'Épuisé' : <>Ajouter au panier — {fcfa(p.price * qty)}</>}</button>
+                <button onClick={submit} disabled={p.stock <= 0} className="mt-6 w-full rounded-full bg-ink py-3.5 text-sm font-bold uppercase tracking-wider text-ivory transition hover:bg-gold hover:text-ink disabled:cursor-not-allowed disabled:opacity-50">{p.stock <= 0 ? 'Épuisé' : <>Ajouter au panier — {fcfa(unitPrice(p, pick) * qty)}</>}</button>
                 <Link to={`/produit/${p.slug}`} onClick={() => setQuick(null)} className="mt-3 flex items-center justify-center gap-1 text-xs font-semibold text-ink-500 hover:text-ink">Voir tous les détails <ChevronRight size={14} /></Link>
               </div>
             </div>

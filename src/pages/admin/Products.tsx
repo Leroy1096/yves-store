@@ -1,8 +1,9 @@
-import { Check, EyeOff, Loader2, Megaphone, RotateCcw, Save } from 'lucide-react'
+import { Check, EyeOff, Loader2, Megaphone, RotateCcw, Save, SlidersHorizontal } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Img } from '../../components/ui'
-import { refreshCatalog } from '../../lib/catalog'
+import { NEW_PRICE_DAYS, priceDropped, refreshCatalog } from '../../lib/catalog'
+import PriceOptionsEditor from './PriceOptions'
 import { cn, fcfa } from '../../lib/format'
 import { supabase } from '../../lib/supabase'
 import { Badge, CATEGORY_FR, Empty, ErrorBox, errMsg, fetchCatalog, Loading, PageHead, Pills, productInfo, SearchInput, type CatalogRow } from './shared'
@@ -17,10 +18,14 @@ function ProductRow({ r, onSaved }: { r: CatalogRow; onSaved: (r: CatalogRow) =>
   const [busy, setBusy] = useState('')
   const [err, setErr] = useState('')
   const [ok, setOk] = useState(false)
+  const [optOpen, setOptOpen] = useState(false)
   useEffect(() => { setPrice(String(r.price)); setCompare(r.compare_at ? String(r.compare_at) : '') }, [r.price, r.compare_at])
   const p = toInt(price), c = compare.trim() ? toInt(compare) : null
   const dirty = p !== r.price || c !== (r.compare_at ?? null)
   const off = p && c && c > p ? Math.round((1 - p / c) * 100) : 0
+  const dropped = priceDropped(r)
+  const daysLeft = dropped ? Math.max(1, Math.ceil(NEW_PRICE_DAYS - (Date.now() - new Date(r.price_changed_at!).getTime()) / 86400000)) : 0
+  const nOpts = r.price_options?.length ?? 0
 
   const save = async (active = r.active, key = 'save') => {
     setErr(''); setOk(false)
@@ -41,9 +46,12 @@ function ProductRow({ r, onSaved }: { r: CatalogRow; onSaved: (r: CatalogRow) =>
           {r.name}
           {!r.active && <Badge cls="bg-ink/10 text-ink-700">Retiré du site</Badge>}
           {r.stock === 0 && r.active && <Badge cls="bg-red-100 text-red-700">Épuisé</Badge>}
+          {dropped && <Badge cls="bg-emerald-100 text-emerald-800">Nouveau prix · avant {fcfa(r.previous_price!)} · encore {daysLeft} j</Badge>}
+          {nOpts > 0 && <Badge cls="bg-gold/15 text-gold-dark">{r.price_options!.map((g) => g.group).join(' + ')}</Badge>}
         </p>
         <p className="text-xs text-ink-400">{CATEGORY_FR[r.category] ?? r.category} · Réf. {r.id.toUpperCase()} · Stock : <b className={cn(r.stock <= r.low_stock_threshold ? 'text-orange-700' : 'text-ink-500')}>{r.stock}</b></p>
         {err && <p className="mt-1 text-xs font-medium text-red-600">{err}</p>}
+        {p !== null && p < r.price && p >= 100 && <p className="mt-1 text-xs font-medium text-emerald-700">Baisse de prix : le badge « Nouveau prix » s’affichera {NEW_PRICE_DAYS} jours sur le site.</p>}
       </div>
       <div className="flex flex-wrap items-end gap-2">
         <label className="block">
@@ -56,6 +64,9 @@ function ProductRow({ r, onSaved }: { r: CatalogRow; onSaved: (r: CatalogRow) =>
         </label>
         <button onClick={() => save()} disabled={!dirty || !!busy} className={cn('inline-flex h-[38px] items-center gap-1.5 rounded-lg px-3.5 text-xs font-bold transition', dirty ? 'bg-ink text-ivory hover:bg-gold hover:text-ink' : ok ? 'bg-emerald-100 text-emerald-700' : 'bg-ivory-200 text-ink-400')}>
           {busy === 'save' ? <Loader2 size={14} className="animate-spin" /> : ok ? <Check size={14} /> : <Save size={14} />} {ok ? 'Enregistré' : 'Enregistrer'}
+        </button>
+        <button type="button" onClick={() => setOptOpen(!optOpen)} className={cn('inline-flex h-[38px] items-center gap-1.5 rounded-lg px-3 text-xs font-bold ring-1 transition', optOpen || nOpts ? 'bg-gold/15 text-gold-dark ring-gold/50' : 'text-ink-600 ring-ink/15 hover:ring-ink')} title="Prix différent selon la longueur, la qualité…" data-testid={`options-${r.id}`}>
+          <SlidersHorizontal size={14} /> Prix par option{nOpts ? ` (${nOpts})` : ''}
         </button>
         {r.active && (
           <Link to={`/gerant/nouveautes?produits=${encodeURIComponent(r.id)}`} className="inline-flex h-[38px] items-center gap-1.5 rounded-lg px-3 text-xs font-bold text-gold-dark ring-1 ring-gold/40 hover:bg-gold/10" title="Annoncer cet article aux abonnés (e-mail + WhatsApp)" data-testid={`announce-${r.id}`}>
@@ -72,6 +83,7 @@ function ProductRow({ r, onSaved }: { r: CatalogRow; onSaved: (r: CatalogRow) =>
           </button>
         )}
       </div>
+      {optOpen && <PriceOptionsEditor r={r} onSaved={onSaved} onClose={() => setOptOpen(false)} />}
     </div>
   )
 }
@@ -107,7 +119,7 @@ export default function Products({ onChange }: { onChange?: () => void }) {
       {!rows ? <Loading /> : list.length === 0 ? <Empty>{vis === 'retires' ? 'Aucun article retiré.' : 'Aucun article trouvé.'}</Empty> : (
         <div className="space-y-2.5">{list.map((r) => <ProductRow key={r.id} r={r} onSaved={saved} />)}</div>
       )}
-      <p className="mt-6 text-xs text-ink-400">Astuce : le prix barré (facultatif) affiche une promotion « −X % » sur le site. Un article retiré n’est plus visible ni commandable, mais vous pouvez le remettre en vente à tout moment. Prix moyen affiché : {rows && rows.length ? fcfa(Math.round(rows.reduce((a, r) => a + r.price, 0) / rows.length)) : '—'}.</p>
+      <p className="mt-6 text-xs text-ink-400">Astuce : le prix barré (facultatif) affiche une promotion « −X % » sur le site. Quand vous <b>baissez</b> un prix, le badge vert « Nouveau prix » s’affiche {NEW_PRICE_DAYS} jours. « Prix par option » permet un prix selon la longueur ou la qualité (perruques). Un article retiré n’est plus visible ni commandable, mais vous pouvez le remettre en vente à tout moment. Prix moyen affiché : {rows && rows.length ? fcfa(Math.round(rows.reduce((a, r) => a + r.price, 0) / rows.length)) : '—'}.</p>
     </>
   )
 }

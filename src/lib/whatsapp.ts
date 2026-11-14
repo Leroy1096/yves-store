@@ -58,7 +58,7 @@ export interface GuestOrderInfo {
   name?: string
   status?: string
   total?: number
-  lines?: { name: string; qty: number; price: number; size?: string; color?: string }[]
+  lines?: { name: string; qty: number; price: number; size?: string; color?: string; options?: Record<string, string> }[]
   shipping?: string
   address?: { city: string; commune: string; details: string }
   payment?: string
@@ -74,7 +74,7 @@ export async function requestOrderWhatsapp(kind: 'order_tracking' | 'order_cance
   const p = phone ? normalizePhone(phone) : null
   const payload = {
     ...info,
-    lines: info.lines?.slice(0, 20).map((l) => ({ name: l.name, qty: l.qty, price: l.price, size: l.size, color: l.color })),
+    lines: info.lines?.slice(0, 20).map((l) => ({ name: l.name, qty: l.qty, price: l.price, size: l.size, color: l.color, ...(l.options ? { options: l.options } : {}) })),
     motif, note,
   }
   const { data, error } = await supabase.rpc('request_order_whatsapp', { p_kind: kind, p_order_id: orderId, p_phone: p ?? '', p_payload: payload })
@@ -130,7 +130,7 @@ export function resetMessage(name: string | null, code: string) {
 function linesBlock(r: WaRequest) {
   const lines = r.payload.lines ?? []
   if (!lines.length) return ''
-  return lines.map((l) => `• ${l.qty} × ${l.name}${l.size ? ` (${l.size})` : ''} — ${fcfa(l.price * l.qty)}`).join('\n')
+  return lines.map((l) => `• ${l.qty} × ${l.name}${[l.size, ...Object.values(l.options ?? {})].filter(Boolean).length ? ` (${[l.size, ...Object.values(l.options ?? {})].filter(Boolean).join(', ')})` : ''} — ${fcfa(l.price * l.qty)}`).join('\n')
 }
 
 export function orderMessage(r: WaRequest, statusOverride?: string) {

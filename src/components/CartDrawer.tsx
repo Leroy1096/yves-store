@@ -17,7 +17,7 @@ export default function CartDrawer() {
   const subtotal = cartSubtotal(lines)
   const remaining = Math.max(0, FREE_SHIPPING - subtotal)
   const pct = Math.min(100, (subtotal / FREE_SHIPPING) * 100)
-  const upsell = products.filter((p) => !lines.some((l) => l.productId === p.id) && p.price <= 9500 && !p.sizes).slice(0, 3)
+  const upsell = products.filter((p) => !lines.some((l) => l.productId === p.id) && p.price <= 9500 && !p.sizes && !p.priceOptions?.length).slice(0, 3)
 
   useEffect(() => {
     document.body.style.overflow = cartOpen ? 'hidden' : ''
@@ -74,14 +74,14 @@ export default function CartDrawer() {
                             <Link to={`/produit/${l.product.slug}`} onClick={closeCart} className="font-display text-lg leading-tight hover:text-gold-dark">{l.product.name}</Link>
                             <button onClick={() => remove(l.key)} className="h-fit p-1 text-ink-400 hover:text-red-700" aria-label="Retirer"><Trash2 size={15} /></button>
                           </div>
-                          <p className="mt-0.5 text-xs text-ink-400">{[l.color, l.size].filter(Boolean).join(' · ')}</p>
+                          <p className="mt-0.5 text-xs text-ink-400">{l.variant}</p>
                           <div className="mt-auto flex items-center justify-between pt-3">
                             <div className="flex items-center rounded-full border border-ink/15">
                               <button onClick={() => setQty(l.key, l.qty - 1)} className="p-2 hover:text-gold" aria-label="Diminuer"><Minus size={13} /></button>
                               <span className="w-6 text-center text-sm font-semibold">{l.qty}</span>
                               <button onClick={() => setQty(l.key, Math.min(l.product.stock, l.qty + 1))} className="p-2 hover:text-gold" aria-label="Augmenter"><Plus size={13} /></button>
                             </div>
-                            <span className="font-semibold">{fcfa(l.qty * l.product.price)}</span>
+                            <span className="font-semibold">{fcfa(l.qty * l.unit)}</span>
                           </div>
                         </div>
                       </motion.li>

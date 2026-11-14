@@ -1,14 +1,18 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { BadgeCheck, ChevronDown, Heart, Minus, Plus, RotateCcw, Share2, ShieldCheck, ThumbsUp, Truck, Wallet, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { BadgeCheck, ChevronDown, Heart, Minus, Plus, RotateCcw, Share2, ShieldCheck, Truck, Wallet, X } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import ProductCard from '../components/ProductCard'
 import { Img, Page, Reveal, Stars } from '../components/ui'
-import { getCategory, getProduct, products, ratingDistribution, seedReviews, type Product, type Review } from '../data/products'
+import { getCategory, getProduct, products, type Product } from '../data/products'
 import { cn, discount, fcfa, FREE_SHIPPING } from '../lib/format'
-import { useCart, useRecent, useReviews, useUI, useWishlist } from '../store'
+import { useCart, useRecent, useUI, useWishlist } from '../store'
+import { useAuth } from '../store/auth'
+import { deleteMyReview, fetchReviews, reviewDate, reviewStat, submitReview, type PublicReview } from '../lib/reviews'
+import { defaultPick, priceRange, unitPrice, visibleSizes, type OptionPick } from '../lib/options'
+import OptionPicker from '../components/OptionPicker'
 import NotFound from './NotFound'
-import { allProducts } from '../lib/catalog'
+import { allProducts, useCatalogVersion } from '../lib/catalog'
 
 function Gallery({ p }: { p: Product }) {
   const [i, setI] = useState(0)
@@ -74,25 +78,78 @@ function Accordion({ title, children, defaultOpen = false }: { title: string; ch
 }
 
 function Reviews({ p }: { p: Product }) {
-  const allMine = useReviews((s) => s.mine)
-  const addReview = useReviews((s) => s.add)
-  const mine = useMemo(() => allMine.filter((r) => r.productId === p.id), [allMine, p.id])
-  const all = useMemo(() => [...mine, ...seedReviews.filter((r) => r.productId === p.id)], [mine, p.id])
+  const user = useAuth((st) => st.user)
+  const isAdmin = useAuth((st) => st.isAdmin)
+  const [list, setList] = useState<PublicReview[] | null>(null)
+  const [loadErr, setLoadErr] = useState(false)
   const [filter, setFilter] = useState(0)
   const [writing, setWriting] = useState(false)
-  const [helpful, setHelpful] = useState<Record<string, boolean>>({})
-  const [form, setForm] = useState({ author: '', city: '', rating: 5, title: '', body: '' })
+  const [form, setForm] = useState({ rating: 5, title: '', body: '' })
   const [err, setErr] = useState('')
-  const dist = p.reviewCount > 0 ? ratingDistribution(p) : [0, 0, 0, 0, 0]
-  const shown = filter ? all.filter((r) => r.rating === filter) : all
-  const total = p.reviewCount + mine.length
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState(false)
+  useCatalogVersion((st) => st.v) // note moyenne rafraîchie après publication
 
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (form.author.trim().length < 2 || form.body.trim().length < 10) return setErr('Merci d’indiquer votre nom et un avis d’au moins 10 caractères.')
-    const r: Review = { id: `u-${Date.now()}`, productId: p.id, author: form.author.trim(), city: form.city.trim() || 'Côte d’Ivoire', age: 0, rating: form.rating, title: form.title.trim() || 'Mon avis', body: form.body.trim(), date: 'à l’instant', verified: false }
-    addReview(r); setWriting(false); setForm({ author: '', city: '', rating: 5, title: '', body: '' }); setErr('')
+  const load = useCallback(() => { fetchReviews(p.id).then((r) => { setList(r); setLoadErr(false) }).catch(() => setLoadErr(true)) }, [p.id])
+  useEffect(() => { setList(null); setWriting(false); setFilter(0); setDone(false); load() }, [load, user?.id])
+
+  const mine = list?.find((r) => r.mine)
+  const others = (list ?? []).filter((r) => !r.mine)
+  const stat = reviewStat(p.id)
+  const total = stat?.review_count ?? 0
+  const dist = (stat?.dist ?? [0, 0, 0, 0, 0]).map((n) => (total ? Math.round((n / total) * 100) : 0))
+  const shown = filter ? others.filter((r) => r.rating === filter) : others
+  const loginHref = `/compte?redirect=${encodeURIComponent(`/produit/${p.slug}#avis`)}`
+
+  const open = () => {
+    if (writing) return setWriting(false)
+    setForm(mine ? { rating: mine.rating, title: mine.title ?? '', body: mine.comment } : { rating: 5, title: '', body: '' })
+    setErr(''); setDone(false); setWriting(true)
   }
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (form.body.trim().length < 10) return setErr('Votre avis doit contenir au moins 10 caractères.')
+    setBusy(true); setErr('')
+    const r = await submitReview(p.id, form.rating, form.title, form.body)
+    setBusy(false)
+    if (!r.ok) return setErr(r.error)
+    setWriting(false); setDone(true); load()
+  }
+  const remove = async () => {
+    if (!confirm('Supprimer votre avis ?')) return
+    if (await deleteMyReview(p.id)) { setDone(false); load() }
+  }
+
+  const card = (r: PublicReview, k: number) => (
+    <motion.li key={r.id} initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: (k % 4) * 0.05 }} className="py-7" data-testid="review">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-full bg-ink font-display text-lg text-gold-light">{r.author[0]}</span>
+          <div>
+            <p className="text-sm font-semibold">{r.author}{r.mine && <span className="ml-2 rounded-full bg-gold/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-gold-dark">Votre avis</span>}</p>
+            <p className="text-xs text-ink-400">{[r.city, reviewDate(r.created_at)].filter(Boolean).join(' · ')}</p>
+          </div>
+        </div>
+        {r.verified && <span className="flex items-center gap-1 text-xs font-medium text-emerald-700"><BadgeCheck size={14} /> Achat vérifié</span>}
+      </div>
+      <Stars value={r.rating} className="mt-4" />
+      {r.title && <p className="mt-2 font-display text-xl">{r.title}</p>}
+      <p className="mt-1.5 whitespace-pre-line text-[15px] leading-relaxed text-ink-500">{r.comment}</p>
+      {r.reply && (
+        <div className="mt-4 rounded-2xl border-l-4 border-gold bg-ivory-200/70 px-4 py-3" data-testid="review-reply">
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-gold-dark">Réponse de YVES STORE</p>
+          <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-ink-700">{r.reply}</p>
+        </div>
+      )}
+      {r.mine && r.hidden && <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800">Votre avis a été masqué par la boutique : il n’est visible que par vous.</p>}
+      {r.mine && (
+        <div className="mt-3 flex gap-4 text-xs font-semibold">
+          <button type="button" onClick={open} className="text-ink-500 underline-offset-4 hover:text-ink hover:underline">Modifier</button>
+          <button type="button" onClick={remove} className="text-ink-400 underline-offset-4 hover:text-red-700 hover:underline">Supprimer</button>
+        </div>
+      )}
+    </motion.li>
+  )
 
   return (
     <section id="avis" className="container-x scroll-mt-24 py-20">
@@ -101,14 +158,14 @@ function Reviews({ p }: { p: Product }) {
           <p className="eyebrow">Avis clients</p>
           <h2 className="h-display mt-3 text-5xl">Ce qu’ils en pensent</h2>
           <div className="mt-8 flex items-end gap-4">
-            <span className="font-display text-7xl leading-none">{p.reviewCount > 0 ? p.rating.toString().replace('.', ',') : '—'}</span>
-            <div className="pb-2"><Stars value={p.rating} size={18} /><p className="mt-1 text-sm text-ink-500">{total ? `${total} avis vérifiés` : 'Aucun avis pour le moment'}</p></div>
+            <span className="font-display text-7xl leading-none" data-testid="review-avg">{total ? p.rating.toFixed(1).replace('.', ',') : '—'}</span>
+            <div className="pb-2"><Stars value={total ? p.rating : 0} size={18} /><p className="mt-1 text-sm text-ink-500">{total ? `${total} avis client${total > 1 ? 's' : ''}` : 'Aucun avis pour le moment'}</p></div>
           </div>
           <div className="mt-6 space-y-2">
             {dist.map((pct, k) => {
               const star = 5 - k
               return (
-                <button key={star} onClick={() => setFilter(filter === star ? 0 : star)} className={cn('flex w-full items-center gap-3 rounded-lg px-2 py-1 text-sm transition hover:bg-ivory-200', filter === star && 'bg-ivory-200')}>
+                <button key={star} onClick={() => setFilter(filter === star ? 0 : star)} disabled={!total} className={cn('flex w-full items-center gap-3 rounded-lg px-2 py-1 text-sm transition hover:bg-ivory-200 disabled:cursor-default disabled:hover:bg-transparent', filter === star && 'bg-ivory-200')}>
                   <span className="w-8 text-left">{star} ★</span>
                   <span className="h-2 flex-1 overflow-hidden rounded-full bg-ink/10"><motion.span className="block h-full rounded-full bg-gold" initial={{ width: 0 }} whileInView={{ width: `${pct}%` }} viewport={{ once: true }} transition={{ duration: 1, delay: k * 0.08 }} /></span>
                   <span className="w-9 text-right text-xs text-ink-400">{pct}%</span>
@@ -116,56 +173,54 @@ function Reviews({ p }: { p: Product }) {
               )
             })}
           </div>
-          <button onClick={() => setWriting(!writing)} className="btn-dark mt-8 w-full">{writing ? 'Annuler' : 'Écrire un avis'}</button>
+          {isAdmin ? (
+            <p className="mt-8 rounded-2xl bg-ivory-200/70 p-4 text-sm text-ink-500">Vous êtes connecté en gérant : répondez aux avis depuis <Link to="/gerant/avis" className="font-semibold text-ink underline underline-offset-4">Espace gérant → Avis clients</Link>.</p>
+          ) : user ? (
+            <button onClick={open} className="btn-dark mt-8 w-full" data-testid="review-write">{writing ? 'Annuler' : mine ? 'Modifier mon avis' : 'Écrire un avis'}</button>
+          ) : (
+            <div className="mt-8 rounded-2xl border border-ink/10 bg-white p-5 text-center">
+              <p className="text-sm text-ink-500">Vous avez acheté cet article ? Donnez votre avis aux autres clients.</p>
+              <Link to={loginHref} className="btn-dark mt-4 w-full" data-testid="review-login">Se connecter pour donner un avis</Link>
+            </div>
+          )}
+          {done && <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-800" data-testid="review-done">Merci ! Votre avis est publié. 🙏</p>}
         </div>
 
         <div>
           <AnimatePresence>
             {writing && (
-              <motion.form onSubmit={submit} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="mb-8 overflow-hidden">
-                <div className="grid gap-4 rounded-3xl border border-ink/10 bg-white p-6 sm:grid-cols-2">
-                  <div className="sm:col-span-2">
+              <motion.form onSubmit={submit} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="mb-8 overflow-hidden" data-testid="review-form">
+                <div className="grid gap-4 rounded-3xl border border-ink/10 bg-white p-6">
+                  <div>
                     <span className="label">Votre note</span>
                     <div className="flex gap-1">
                       {[1, 2, 3, 4, 5].map((n) => (
-                        <button type="button" key={n} onClick={() => setForm({ ...form, rating: n })} className={cn('text-3xl transition hover:scale-110', n <= form.rating ? 'text-gold' : 'text-ink/15')} aria-label={`${n} étoiles`}>★</button>
+                        <button type="button" key={n} onClick={() => setForm({ ...form, rating: n })} className={cn('text-3xl transition hover:scale-110', n <= form.rating ? 'text-gold' : 'text-ink/15')} aria-label={`${n} étoile${n > 1 ? 's' : ''}`}>★</button>
                       ))}
+                      <span className="ml-2 self-center text-sm text-ink-500">{['', 'Décevant', 'Moyen', 'Bien', 'Très bien', 'Excellent'][form.rating]}</span>
                     </div>
                   </div>
-                  <div><label className="label">Nom *</label><input className="input" value={form.author} onChange={(e) => setForm({ ...form, author: e.target.value })} placeholder="Ex. Aya K." /></div>
-                  <div><label className="label">Ville</label><input className="input" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} placeholder="Ex. Agboville" /></div>
-                  <div className="sm:col-span-2"><label className="label">Titre</label><input className="input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Résumez votre expérience" /></div>
-                  <div className="sm:col-span-2"><label className="label">Votre avis *</label><textarea rows={4} className="input resize-none" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} placeholder="Qualité, taille, livraison…" /></div>
-                  {err && <p className="text-sm text-red-700 sm:col-span-2">{err}</p>}
-                  <button className="btn-gold sm:col-span-2">Publier mon avis</button>
+                  <div><label className="label" htmlFor="rv-title">Titre (facultatif)</label><input id="rv-title" className="input" maxLength={80} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Résumez votre expérience" /></div>
+                  <div>
+                    <label className="label" htmlFor="rv-body">Votre avis *</label>
+                    <textarea id="rv-body" rows={4} maxLength={1000} className="input resize-none" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} placeholder="Qualité, taille, livraison…" />
+                    <p className="mt-1 text-right text-[11px] text-ink-400">{form.body.trim().length} / 1000</p>
+                  </div>
+                  <p className="text-xs text-ink-400">Publié avec votre prénom et l’initiale de votre nom. Le badge « Achat vérifié » s’affiche si vous avez commandé cet article.</p>
+                  {err && <p className="text-sm text-red-700">{err}</p>}
+                  <button className="btn-gold" disabled={busy}>{busy ? 'Publication…' : mine ? 'Enregistrer les modifications' : 'Publier mon avis'}</button>
                 </div>
               </motion.form>
             )}
           </AnimatePresence>
 
+          {mine && !writing && <ul className="mb-2 rounded-3xl border border-gold/30 bg-gold/5 px-5">{card(mine, 0)}</ul>}
           {filter > 0 && <button onClick={() => setFilter(0)} className="chip mb-4 border-ink/15 bg-white">Avis {filter} ★ <X size={12} /></button>}
           <ul className="divide-y divide-ink/10">
-            {shown.length === 0 && <li className="py-10 text-ink-500">Aucun avis avec cette note pour le moment.</li>}
-            {shown.map((r, k) => (
-              <motion.li key={r.id} initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: (k % 4) * 0.05 }} className="py-7">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-3">
-                    <span className="grid h-10 w-10 place-items-center rounded-full bg-ink font-display text-lg text-gold-light">{r.author[0]}</span>
-                    <div>
-                      <p className="text-sm font-semibold">{r.author}{r.age ? <span className="font-normal text-ink-400">, {r.age} ans</span> : null}</p>
-                      <p className="text-xs text-ink-400">{r.city} · {r.date}</p>
-                    </div>
-                  </div>
-                  {r.verified && <span className="flex items-center gap-1 text-xs font-medium text-emerald-700"><BadgeCheck size={14} /> Achat vérifié</span>}
-                </div>
-                <Stars value={r.rating} className="mt-4" />
-                <p className="mt-2 font-display text-xl">{r.title}</p>
-                <p className="mt-1.5 text-[15px] leading-relaxed text-ink-500">{r.body}</p>
-                <button onClick={() => setHelpful({ ...helpful, [r.id]: !helpful[r.id] })} className={cn('mt-4 inline-flex items-center gap-1.5 text-xs transition', helpful[r.id] ? 'font-semibold text-gold-dark' : 'text-ink-400 hover:text-ink')}>
-                  <ThumbsUp size={13} /> Utile ({((r.id.length * 7 + k * 3) % 14) + (helpful[r.id] ? 1 : 0)})
-                </button>
-              </motion.li>
-            ))}
+            {list === null && !loadErr && <li className="py-10 text-ink-400">Chargement des avis…</li>}
+            {loadErr && <li className="py-10 text-ink-500">Les avis n’ont pas pu être chargés. <button onClick={load} className="font-semibold underline">Réessayer</button></li>}
+            {list !== null && shown.length === 0 && !mine && <li className="py-10 text-ink-500">{filter ? 'Aucun avis avec cette note pour le moment.' : 'Soyez le premier à donner votre avis sur cet article ✨'}</li>}
+            {shown.map((r, k) => card(r, k))}
           </ul>
         </div>
       </div>
@@ -185,11 +240,12 @@ export default function ProductPage() {
   const [color, setColor] = useState<string | undefined>()
   const [qty, setQty] = useState(1)
   const [sizeErr, setSizeErr] = useState(false)
+  const [pick, setPick] = useState<OptionPick>({})
   const pushRecent = useRecent((s) => s.push)
   useEffect(() => { if (p) pushRecent(p.id) }, [p, pushRecent])
 
   useEffect(() => {
-    setSize(p?.sizes?.length === 1 ? p.sizes[0] : undefined); setColor(p?.colors?.[0]?.name); setQty(1); setSizeErr(false)
+    setSize(p?.sizes?.length === 1 ? p.sizes[0] : undefined); setColor(p?.colors?.[0]?.name); setQty(1); setSizeErr(false); setPick(p ? defaultPick(p) : {})
     if (p) document.title = `${p.name} — YVES STORE`
     return () => { document.title = 'YVES STORE — Mode, Bijoux, Chaussures & Accessoires | Côte d’Ivoire' }
   }, [p])
@@ -220,15 +276,18 @@ export default function ProductPage() {
   const delivery = new Date(Date.now() + 86400000 * (new Date().getHours() < 14 ? 1 : 2)).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
 
   const soldOut = p.stock <= 0
+  const price = unitPrice(p, pick)
+  const sizes = visibleSizes(p)
+  const range = priceRange(p)
   const doAdd = (buyNow = false) => {
     if (soldOut) return
-    if (p.sizes && p.sizes.length > 1 && !size) { setSizeErr(true); return }
-    add({ productId: p.id, size, color }, qty)
+    if (sizes && sizes.length > 1 && !size) { setSizeErr(true); return }
+    add({ productId: p.id, size: sizes ? size : undefined, color, options: p.priceOptions?.length ? pick : undefined }, qty)
     if (buyNow) return nav('/commande')
     notify(`${p.name} ajouté au panier`, p.images[0]); openCart()
   }
   const share = async () => {
-    const data = { title: p.name, text: `${p.name} — ${fcfa(p.price)} sur YVES STORE`, url: location.href }
+    const data = { title: p.name, text: `${p.name} — ${fcfa(range.min)} sur YVES STORE`, url: location.href }
     if (navigator.share) { try { await navigator.share(data) } catch { /* cancelled */ } } else { await navigator.clipboard?.writeText(location.href); notify('Lien copié !') }
   }
 
@@ -241,20 +300,30 @@ export default function ProductPage() {
         <Gallery p={p} />
         <div>
           <div className="flex flex-wrap items-center gap-2">
+            {!!p.previousPrice && <span className="rounded-full bg-emerald-600 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white">Nouveau prix</span>}
             {p.badge && <span className="rounded-full bg-ink px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-ivory">{p.badge}</span>}
             {off > 0 && <span className="rounded-full bg-gold px-3 py-1 text-[10px] font-bold text-ink">-{off}%</span>}
             <span className="text-xs font-medium uppercase tracking-[0.14em] text-ink-400">{cat.name}</span>
           </div>
           <h1 className="h-display mt-4 text-4xl sm:text-5xl lg:text-[56px]">{p.name}</h1>
           {p.reviewCount > 0
-            ? <a href="#avis" className="mt-4 inline-flex items-center gap-2 text-sm"><Stars value={p.rating} size={15} /><b>{p.rating.toString().replace('.', ',')}</b><span className="text-ink-400 underline-offset-4 hover:underline">{p.reviewCount} avis</span></a>
-            : <a href="#avis" className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-gold-dark">✨ Nouveauté — soyez le premier à donner votre avis</a>}
+            ? <a href="#avis" className="mt-4 inline-flex items-center gap-2 text-sm"><Stars value={p.rating} size={15} /><b>{p.rating.toFixed(1).replace('.', ',')}</b><span className="text-ink-400 underline-offset-4 hover:underline">{p.reviewCount} avis</span></a>
+            : <a href="#avis" className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-gold-dark">✨ Soyez le premier à donner votre avis</a>}
           <div className="mt-6 flex items-baseline gap-3">
-            <span className="text-3xl font-semibold">{fcfa(p.price)}</span>
-            {p.compareAt && <span className="text-lg text-ink-400 line-through">{fcfa(p.compareAt)}</span>}
+            <span className="text-3xl font-semibold" data-testid="product-price">{fcfa(price)}</span>
+            {p.compareAt && <span className="text-lg text-ink-400 line-through">{fcfa(p.compareAt + (price - p.price))}</span>}
             {p.compareAt && <span className="text-sm font-semibold text-gold-dark">Économisez {fcfa(p.compareAt - p.price)}</span>}
           </div>
+          {!!p.previousPrice && (
+            <p className="mt-2 inline-flex flex-wrap items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-sm text-emerald-800" data-testid="new-price-note">
+              <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">Nouveau prix</span>
+              Avant <s>{fcfa(p.previousPrice + (price - p.price))}</s> — vous économisez {fcfa(p.previousPrice - p.price)}
+            </p>
+          )}
+          {range.min !== range.max && <p className="mt-2 text-xs text-ink-500">Prix selon les options choisies : de {fcfa(range.min)} à {fcfa(range.max)}.</p>}
           <p className="mt-5 text-[15px] leading-relaxed text-ink-500">{p.short}</p>
+
+          <OptionPicker p={p} pick={pick} onPick={setPick} />
 
           {p.colors && (
             <div className="mt-8">
@@ -269,14 +338,14 @@ export default function ProductPage() {
             </div>
           )}
 
-          {p.sizes && (
+          {sizes && (
             <div className="mt-7">
               <div className="flex items-center justify-between">
                 <p className={cn('label', sizeErr && 'text-red-700')}>{p.sizeLabel ?? 'Taille'}{size && <span className="normal-case tracking-normal text-ink"> : {size}</span>}</p>
                 {['vetements', 'chaussures', 'bijoux'].includes(p.category) && <span className="text-xs text-ink-500 underline underline-offset-4">Guide des tailles</span>}
               </div>
               <motion.div animate={sizeErr ? { x: [0, -6, 6, -4, 4, 0] } : {}} transition={{ duration: 0.4 }} className="flex flex-wrap gap-2">
-                {p.sizes.map((s) => (
+                {sizes.map((s) => (
                   <button key={s} onClick={() => { setSize(s); setSizeErr(false) }} className={cn('min-w-[52px] rounded-xl border px-4 py-3 text-sm font-medium transition', size === s ? 'border-ink bg-ink text-ivory' : 'border-ink/15 bg-white hover:border-ink')}>{s}</button>
                 ))}
               </motion.div>
@@ -335,8 +404,8 @@ export default function ProductPage() {
 
       <div className="fixed inset-x-0 bottom-0 z-30 flex items-center gap-3 border-t border-ink/10 bg-ivory/95 p-3 backdrop-blur-xl lg:hidden">
         <Img src={p.images[0]} alt="" className="h-12 w-10 rounded-lg object-cover" />
-        <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{p.name}</p><p className="text-sm font-semibold">{fcfa(p.price)}</p></div>
-        <button onClick={() => { if (p.sizes && p.sizes.length > 1 && !size) { setSizeErr(true); window.scrollTo({ top: 300, behavior: 'smooth' }) } else doAdd() }} className="btn-dark px-5 py-3">Ajouter</button>
+        <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{p.name}</p><p className="text-sm font-semibold">{fcfa(price)}</p></div>
+        <button onClick={() => { if (sizes && sizes.length > 1 && !size) { setSizeErr(true); window.scrollTo({ top: 300, behavior: 'smooth' }) } else doAdd() }} className="btn-dark px-5 py-3">Ajouter</button>
       </div>
     </Page>
   )

@@ -81,7 +81,7 @@ export default function Success() {
             {order.lines.map((l, k) => (
               <li key={k} className="flex items-center gap-4 py-4">
                 <Img src={l.image} alt={l.name} className="h-20 w-16 rounded-xl object-cover" />
-                <div className="flex-1"><p className="font-medium">{l.name}</p><p className="text-xs text-ink-400">{[l.color, l.size, `Qté ${l.qty}`].filter(Boolean).join(' · ')}</p></div>
+                <div className="flex-1"><p className="font-medium">{l.name}</p><p className="text-xs text-ink-400">{[l.color, l.size, ...Object.values(l.options ?? {}), `Qté ${l.qty}`].filter(Boolean).join(' · ')}</p></div>
                 <p className="font-semibold">{fcfa(l.price * l.qty)}</p>
               </li>
             ))}

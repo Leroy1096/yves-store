@@ -1,4 +1,4 @@
-import { Boxes, ExternalLink, LayoutDashboard, Loader2, Megaphone, MessageCircle, ShoppingBag, Tag, UserCog, Users } from 'lucide-react'
+import { Boxes, ExternalLink, LayoutDashboard, Loader2, Megaphone, MessageCircle, ShoppingBag, Star, Tag, UserCog, Users } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { Link, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { Logo } from '../../components/ui'
@@ -17,6 +17,7 @@ const Stock = lazy(() => import('./Stock'))
 const Messages = lazy(() => import('./Messages'))
 const AdminProfile = lazy(() => import('./AdminProfile'))
 const News = lazy(() => import('./News'))
+const Reviews = lazy(() => import('./Reviews'))
 
 const NAV = [
   { to: '/gerant', label: 'Tableau de bord', icon: LayoutDashboard, end: true },
@@ -25,21 +26,23 @@ const NAV = [
   { to: '/gerant/produits', label: 'Produits & prix', icon: Tag },
   { to: '/gerant/stock', label: 'Stock', icon: Boxes, badge: 'stock' as const },
   { to: '/gerant/messages', label: 'Messages WhatsApp', icon: MessageCircle, badge: 'wa' as const },
+  { to: '/gerant/avis', label: 'Avis clients', icon: Star, badge: 'reviews' as const },
   { to: '/gerant/nouveautes', label: 'Nouveautés', icon: Megaphone, badge: 'news' as const },
   { to: '/gerant/profil', label: 'Mon profil', icon: UserCog },
 ]
 
 function useBadges(enabled: boolean) {
-  const [b, setB] = useState({ orders: 0, wa: 0, stock: 0, news: 0 })
+  const [b, setB] = useState({ orders: 0, wa: 0, stock: 0, news: 0, reviews: 0 })
   const load = useCallback(async () => {
-    const [o, w, s, n] = await Promise.all([
+    const [o, w, s, n, rv] = await Promise.all([
       supabase.from('orders').select('id', { count: 'exact', head: true }).eq('status', 'confirmee'),
       supabase.from('whatsapp_requests').select('id', { count: 'exact', head: true }).eq('status', 'en_attente'),
       supabase.from('catalog_products').select('stock,low_stock_threshold,active'),
       supabase.from('announcements').select('id', { count: 'exact', head: true }).eq('status', 'brouillon'),
+      supabase.from('product_reviews').select('id', { count: 'exact', head: true }).eq('seen_by_admin', false),
     ])
     const low = (s.data ?? []).filter((r: { stock: number; low_stock_threshold: number; active: boolean }) => r.active && r.stock <= r.low_stock_threshold).length
-    setB({ orders: o.count ?? 0, wa: w.count ?? 0, stock: low, news: n.count ?? 0 })
+    setB({ orders: o.count ?? 0, wa: w.count ?? 0, stock: low, news: n.count ?? 0, reviews: rv.count ?? 0 })
   }, [])
   useEffect(() => {
     if (!enabled) return
@@ -76,7 +79,7 @@ export default function AdminApp() {
         )}>
         <n.icon size={17} />
         <span className={cn(mobile && 'whitespace-nowrap')}>{n.label}</span>
-        {count > 0 && <span className={cn('ml-auto grid h-5 min-w-5 place-items-center rounded-full px-1.5 text-[10px] font-bold', n.badge === 'stock' ? 'bg-orange-500 text-white' : n.badge === 'news' ? 'bg-violet-500 text-white' : 'bg-red-500 text-white')}>{count}</span>}
+        {count > 0 && <span className={cn('ml-auto grid h-5 min-w-5 place-items-center rounded-full px-1.5 text-[10px] font-bold', n.badge === 'stock' ? 'bg-orange-500 text-white' : n.badge === 'news' ? 'bg-violet-500 text-white' : n.badge === 'reviews' ? 'bg-gold text-ink' : 'bg-red-500 text-white')}>{count}</span>}
       </NavLink>
     )
   })
@@ -109,7 +112,7 @@ export default function AdminApp() {
         <nav className="flex gap-2 overflow-x-auto px-4 pb-3 [scrollbar-width:none]">{navLinks(true)}</nav>
       </header>
 
-      {aiMounted && <Assistant open={aiOpen} onClose={() => setAiOpen(false)} name={name} />}
+      {aiMounted && <Assistant open={aiOpen} onClose={() => setAiOpen(false)} name={name} onDataChange={reload} />}
 
       <main className="min-w-0 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
         <div className="mx-auto max-w-6xl">
@@ -122,6 +125,7 @@ export default function AdminApp() {
               <Route path="stock" element={<Stock onChange={reload} />} />
               <Route path="messages" element={<Messages onChange={reload} />} />
               <Route path="nouveautes" element={<News />} />
+              <Route path="avis" element={<Reviews onChange={reload} />} />
               <Route path="profil" element={<AdminProfile />} />
               <Route path="*" element={<Navigate to="/gerant" replace />} />
             </Routes>
