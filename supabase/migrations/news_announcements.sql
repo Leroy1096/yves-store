@@ -225,3 +225,17 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke all on function public.news_email_audience() from public, anon, authenticated;
 grant execute on function public.news_email_audience() to service_role;
+
+-- ═════ 20 · public_announcements : annonces publiées visibles par les clients (cloche 🔔 + Mon compte) ═════
+-- Champs publics uniquement (jamais la liste des envois WhatsApp ni les abonnés)
+create or replace function public.public_announcements(p_limit int default 20)
+returns table (id bigint, kind text, title text, items jsonb, published_at timestamptz)
+language sql stable security definer set search_path = public as $$
+  select a.id, a.kind, a.title, a.items, a.published_at
+    from public.announcements a
+   where a.status = 'publiee' and a.published_at is not null
+   order by a.published_at desc
+   limit least(greatest(coalesce(p_limit, 20), 1), 50)
+$$;
+revoke all on function public.public_announcements(int) from public;
+grant execute on function public.public_announcements(int) to anon, authenticated;

@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { BadgeCheck, ChevronRight, Heart, LayoutGrid, LogOut, Package, RotateCcw, ShoppingBag, Ticket, Truck, User } from 'lucide-react'
+import NewsBell from './NewsBell'
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { navItems, shortCat } from '../data/nav'
@@ -174,6 +175,7 @@ export default function Header() {
           <div className="mx-auto min-w-0 max-w-2xl flex-1"><SearchBar compact={false} /></div>
           <div className="flex shrink-0 items-center sm:gap-1">
             <div className="hidden sm:block"><AccountMenu /></div>
+            <NewsBell />
             <Link to="/favoris" className="relative hidden h-10 w-10 place-items-center rounded-full transition hover:bg-ink/5 sm:grid" aria-label="Favoris">
               <Heart size={21} />
               {wish > 0 && <span className="absolute right-0.5 top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-gold px-1 text-[9px] font-bold text-ink">{wish}</span>}

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { ChevronDown, Crown, Heart, LayoutGrid, Loader2, LogOut, Mail, Package, Phone, ShieldCheck, ShoppingBag, User as UserIcon } from 'lucide-react'
+import { Bell, ChevronDown, Crown, Heart, LayoutGrid, Loader2, LogOut, Mail, Package, Phone, ShieldCheck, ShoppingBag, User as UserIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { FormAlert, MatchHint, PasswordField, PasswordMeter, TextField } from '../components/AuthFields'
@@ -15,6 +15,8 @@ import SearchSelect from '../components/SearchSelect'
 import { ABIDJAN_COMMUNES, CITIES, POPULAR_CITIES } from '../data/cities'
 import CancelOrder, { CancelBadge } from '../components/CancelOrder'
 import WaRequestButton from '../components/WaRequest'
+import { NewsFeed, usePublicNews } from '../components/NewsBell'
+import { markNewsSeen } from '../lib/news'
 import { cancelOrderRemote } from '../lib/orders'
 import { useAuth, type Profile } from '../store/auth'
 
@@ -27,10 +29,24 @@ interface DbOrder {
   customer?: { firstName?: string; lastName?: string; phone?: string; email?: string }
 }
 
+function NewsTab() {
+  const list = usePublicNews()
+  const profile = useAuth((s) => s.profile)
+  useEffect(() => () => { if (list?.[0]) markNewsSeen(list[0].published_at) }, [list])
+  return (
+    <div>
+      <h2 className="mb-2 font-display text-4xl">Nouveautés</h2>
+      <p className="mb-6 text-sm text-ink-500">Les nouveaux articles annoncés par la boutique.{profile && !profile.newsletter && <> Pour les recevoir aussi par e-mail / WhatsApp, activez « Recevoir les nouveautés » dans <Link to="/mon-compte?onglet=profil" className="font-semibold text-ink underline">Mon profil</Link>.</>}</p>
+      {list === null ? <div className="grid place-items-center py-16"><Loader2 className="animate-spin text-gold" /></div> : <NewsFeed list={list} />}
+    </div>
+  )
+}
+
 const TABS = [
   { id: 'apercu', label: 'Aperçu', icon: LayoutGrid },
   { id: 'commandes', label: 'Mes commandes', icon: Package },
   { id: 'favoris', label: 'Mes favoris', icon: Heart },
+  { id: 'nouveautes', label: 'Nouveautés', icon: Bell },
   { id: 'profil', label: 'Mon profil', icon: UserIcon },
   { id: 'securite', label: 'Sécurité', icon: ShieldCheck },
 ] as const
@@ -374,6 +390,7 @@ export default function Dashboard() {
               </div>
             )}
 
+            {tab === 'nouveautes' && <NewsTab />}
             {tab === 'favoris' && (
               <div>
                 <h2 className="mb-6 font-display text-4xl">Mes favoris</h2>

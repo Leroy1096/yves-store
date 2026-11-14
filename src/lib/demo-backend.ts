@@ -479,6 +479,7 @@ async function rpc(name: string, a: Row = {}): Promise<Res> {
       return out(!!(s || p))
     }
     case 'admin_news_audience': return need() ?? out(newsAudience(db))
+    case 'public_announcements': return out((db.announcements ?? []).filter((x) => x.status === 'publiee' && x.published_at).sort((x, y) => (x.published_at < y.published_at ? 1 : -1)).slice(0, Math.min(50, Number(a.p_limit) || 20)).map((x) => ({ id: x.id, kind: x.kind, title: x.title, items: x.items, published_at: x.published_at })))
     case 'admin_news_unsubscribe': {
       const n = need(); if (n) return n
       const k = String(a.p_key ?? ''); const id = k.slice(2)

@@ -61,3 +61,13 @@ export async function subscribeNews(contact: string, name?: string): Promise<{ o
   if (m.includes('RATE_LIMIT')) return { ok: false, error: 'Trop de demandes. Réessayez dans une minute.' }
   return { ok: false, error: 'Inscription impossible pour le moment. Réessayez.' }
 }
+
+/* ───────── Côté clients : annonces publiées (cloche 🔔 + Mon compte) ───────── */
+export interface PublicNews { id: number; kind: NewsKind; title: string; items: NewsItem[]; published_at: string }
+const SEEN_KEY = 'yves-news-seen'
+export async function fetchPublicNews(limit = 20): Promise<PublicNews[]> {
+  const { data, error } = await supabase.rpc('public_announcements', { p_limit: limit })
+  return error ? [] : ((data ?? []) as PublicNews[])
+}
+export const newsSeenAt = () => { try { return localStorage.getItem(SEEN_KEY) ?? '' } catch { return '' } }
+export const markNewsSeen = (iso = new Date().toISOString()) => { try { localStorage.setItem(SEEN_KEY, iso) } catch { /* */ } }
