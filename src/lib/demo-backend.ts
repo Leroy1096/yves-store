@@ -19,6 +19,8 @@ interface DB {
   stock_movements: Row[]
   whatsapp_requests: Row[]
   password_reset_log: Row[]
+  news_subscribers?: Row[]
+  announcements?: Row[]
   seq: number
 }
 
@@ -299,7 +301,44 @@ function load(): DB {
   if (mem) return mem
   try { const raw = JSON.parse(localStorage.getItem(KEY) ?? 'null'); if (raw?.v === DB_VERSION) mem = raw } catch { /* */ }
   if (!mem) { mem = seed(); save() }
+  if (!mem.announcements) { seedNews(mem); save() }
   return mem
+}
+
+// ───────────── Nouveautés (abonnés + annonces) ─────────────
+const ci = (p?: string | null) => { let d = String(p ?? '').replace(/\D/g, ''); if (d.startsWith('00225')) d = d.slice(5); else if (d.startsWith('225') && d.length === 13) d = d.slice(3); return /^(01|05|07|21|25|27)\d{8}$/.test(d) ? `+225${d}` : null }
+function seedNews(db: DB) {
+  // ~2 clients sur 3 ont accepté les nouveautés (dont Aya)
+  db.profiles.forEach((p, i) => { if (!db.admins.includes(p.id)) p.newsletter = p.email === 'aya.kone@exemple.ci' || i % 3 !== 2 })
+  db.news_subscribers = [
+    ['Inès', 'ines.toure@exemple.ci', null, 2], ['Bintou', null, '+2250708112233', 3], [null, 'serge.kouadio@exemple.ci', null, 5],
+    ['Patricia', null, '+2250554667788', 6], ['Marc', 'marc.n@exemple.ci', '+2250102030405', 9],
+  ].map(([name, email, phone, d]) => ({ id: uuid(), name, email, phone, token: uuid(), created_at: iso((d as number) * D), unsubscribed_at: null }))
+  const pick = (ids: string[]) => ids.map((id) => products.find((p) => p.id === id)).filter(Boolean).map((p) => ({ id: p!.id, name: p!.name, price: p!.price, compare_at: p!.compareAt ?? null, image: null, url: `/produit/${p!.slug}`, short: p!.short?.slice(0, 120) ?? null }))
+  const old = products.filter((p) => (p.addedDaysAgo ?? 99) >= 8 && (p.addedDaysAgo ?? 99) <= 11).slice(0, 1).map((p) => p.id)
+  const week = products.filter((p) => (p.addedDaysAgo ?? 99) <= 7).slice(0, 8).map((p) => p.id)
+  const subs = db.profiles.filter((p) => p.newsletter && ci(p.contact_phone ?? p.phone)).slice(0, 3).map((p) => 'p:' + p.id)
+  db.announcements = []
+  if (old.length) {
+    const it = pick(old)
+    db.announcements.push({ id: db.seq++, kind: 'produit', product_ids: old, title: `Nouveau : ${it[0].name}`, items: it, status: 'publiee', created_by: null, created_at: iso(9 * D), published_at: iso(9 * D), email_status: 'test', email_count: 0, email_error: null, wa_sent: subs,
+      message: `✨ *NOUVEAUTÉ chez YVES STORE* ✨\n\nBonjour {prénom} 👋\n\n🛍️ *${it[0].name}*\n💰 ${it[0].price.toLocaleString('fr-FR')} FCFA\n\n👉 Voir l’article : https://yvesstore.com${it[0].url}\n\n📲 Répondez à ce message pour commander ou réserver.\nYVES STORE ❤️\n\n_Pour ne plus recevoir nos nouveautés, répondez STOP._` })
+  }
+  if (week.length) {
+    const it = pick(week); const monday = new Date(); monday.setHours(9, 0, 0, 0); monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
+    const f = (d: Date) => d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
+    db.announcements.push({ id: db.seq++, kind: 'hebdo', product_ids: week, title: `Les nouveautés de la semaine (${f(new Date(monday.getTime() - 7 * D))} – ${f(monday)})`, items: it, status: 'brouillon', created_by: null, created_at: monday.toISOString(), published_at: null, email_status: 'a_envoyer', email_count: 0, email_error: null, wa_sent: [],
+      message: ['🗓️ *Les nouveautés de la semaine chez YVES STORE* 🛍️', '', 'Bonjour {prénom} 👋', '', ...it.flatMap((x, i) => [`${i + 1}. *${x.name}* — ${x.price.toLocaleString('fr-FR').replace(/\u202f|\u00a0/g, ' ')} FCFA`, `👉 https://yvesstore.com${x.url}`, '']), '📲 Répondez à ce message pour commander ou réserver.', 'YVES STORE ❤️', '', '_Pour ne plus recevoir nos nouveautés, répondez STOP._'].join('\n') })
+  }
+}
+function newsAudience(db: DB) {
+  const blocked = new Set(db.users.filter((u) => u.blocked).map((u) => u.id))
+  const clients = db.profiles.filter((p) => p.newsletter && !db.admins.includes(p.id) && !blocked.has(p.id)).map((p) => ({
+    key: 'p:' + p.id, name: `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim() || null, email: p.email || null, phone: ci(p.contact_phone) ?? ci(p.phone), source: 'client', since: p.created_at,
+  }))
+  const site = (db.news_subscribers ?? []).filter((x) => !x.unsubscribed_at && !clients.some((c) => (x.email && c.email?.toLowerCase() === x.email) || (x.phone && c.phone === x.phone)))
+    .map((x) => ({ key: 's:' + x.id, name: x.name, email: x.email, phone: x.phone, source: 'site', since: x.created_at }))
+  return [...clients, ...site].sort((a, b) => (a.since < b.since ? 1 : -1))
 }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(mem)) } catch { /* quota */ } }
 export function resetDemo() { mem = seed(); save(); try { localStorage.removeItem(SKEY); localStorage.removeItem('yves-catalog-v2') } catch { /* */ } }
@@ -355,7 +394,7 @@ class Query {
     if (t === 'catalog_categories') return db.catalog_categories
     if (t === 'profiles') return db.profiles.filter((p) => p.id === uid() || isAdmin())
     if (t === 'orders') return db.orders.filter((o) => isAdmin() || (uid() && o.user_id === uid()))
-    if (t === 'stock_movements' || t === 'whatsapp_requests' || t === 'password_reset_log') return isAdmin() ? (db[t] as Row[]) : []
+    if (t === 'stock_movements' || t === 'whatsapp_requests' || t === 'password_reset_log' || t === 'announcements' || t === 'news_subscribers') return isAdmin() ? ((db[t] ?? []) as Row[]) : []
     return []
   }
   private exec(): Promise<Res> {
@@ -421,6 +460,51 @@ async function rpc(name: string, a: Row = {}): Promise<Res> {
   const out = (data: unknown) => { save(); return delay(ok(JSON.parse(JSON.stringify(data ?? null)))) }
   switch (name) {
     case 'is_admin': return delay(ok(admin))
+    case 'news_subscribe': {
+      const e = String(a.p_email ?? '').trim().toLowerCase() || null; const ph = ci(a.p_phone); const name = String(a.p_name ?? '').trim().slice(0, 60) || null
+      if (e && !/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(e)) return fail('INVALID_EMAIL')
+      if (String(a.p_phone ?? '').trim() && !ph) return fail('INVALID_PHONE')
+      if (!e && !ph) return fail('EMPTY')
+      const list = (db.news_subscribers ??= [])
+      for (const [col, v] of [['email', e], ['phone', ph]] as const) {
+        if (!v) continue
+        const ex = list.find((x) => x[col] === v)
+        if (ex) { ex.unsubscribed_at = null; ex.name = name ?? ex.name } else list.push({ id: uuid(), email: col === 'email' ? v : null, phone: col === 'phone' ? v : null, name, token: uuid(), created_at: iso(), unsubscribed_at: null })
+      }
+      return out('ok')
+    }
+    case 'news_unsubscribe': {
+      const s = (db.news_subscribers ?? []).find((x) => x.token === a.p_token); const p = db.profiles.find((x) => x.news_token === a.p_token)
+      if (s) s.unsubscribed_at = s.unsubscribed_at ?? iso(); if (p) p.newsletter = false
+      return out(!!(s || p))
+    }
+    case 'admin_news_audience': return need() ?? out(newsAudience(db))
+    case 'admin_news_unsubscribe': {
+      const n = need(); if (n) return n
+      const k = String(a.p_key ?? ''); const id = k.slice(2)
+      if (k.startsWith('p:')) { const p = db.profiles.find((x) => x.id === id); if (p) p.newsletter = false }
+      if (k.startsWith('s:')) { const x = (db.news_subscribers ?? []).find((y) => y.id === id); if (x) x.unsubscribed_at = iso() }
+      return out(null)
+    }
+    case 'admin_publish_announcement': {
+      const n = need(); if (n) return n
+      const ids = (a.p_product_ids ?? []) as string[]
+      if (!['produit', 'hebdo'].includes(a.p_kind)) return fail('INVALID_KIND')
+      if (!ids.length) return fail('NO_PRODUCT'); if (ids.length > 12) return fail('TOO_MANY')
+      if (String(a.p_message ?? '').trim().length < 10) return fail('Le message est trop court.')
+      const list = (db.announcements ??= [])
+      let r = a.p_draft_id ? list.find((x) => x.id === a.p_draft_id && x.status === 'brouillon') : null
+      const patch = { product_ids: ids, title: String(a.p_title ?? '').trim().slice(0, 140), message: a.p_message, items: a.p_items ?? [], status: 'publiee', published_at: iso() }
+      if (r) Object.assign(r, patch)
+      else { r = { id: db.seq++, kind: a.p_kind, created_by: uid(), created_at: iso(), email_status: 'a_envoyer', email_count: 0, email_error: null, wa_sent: [], ...patch }; list.unshift(r) }
+      return out(r)
+    }
+    case 'admin_mark_announcement_wa': {
+      const n = need(); if (n) return n
+      const r = (db.announcements ?? []).find((x) => x.id === a.p_id); if (!r) return out([])
+      r.wa_sent = a.p_sent === false ? r.wa_sent.filter((k: string) => k !== a.p_key) : [...new Set([...r.wa_sent, a.p_key])]
+      return out(r.wa_sent)
+    }
     case 'phone_exists': return ok(db.profiles.some((p) => p.phone === a.p))
     case 'admin_list_clients': {
       if (!admin) return need()!
@@ -625,6 +709,16 @@ const auth = {
 
 const functions = {
   invoke: async (name: string, { body }: { body: Row }) => {
+    if (name === 'announce-news') {
+      // Aperçu hors ligne : aucun e-mail réel — comme le vrai site sans domaine vérifié (aperçu au gérant)
+      await new Promise((r) => setTimeout(r, 400))
+      if (!isAdmin()) return { data: null, error: { message: 'FORBIDDEN' } }
+      const db = load(); const r = (db.announcements ?? []).find((x) => x.id === body.id)
+      if (!r || r.status !== 'publiee') return { data: { ok: false, error: 'NOT_FOUND' }, error: null }
+      const n = newsAudience(db).filter((x) => x.email).length
+      if (r.email_status !== 'envoye') { r.email_status = 'test'; r.email_count = 0; r.email_error = null }
+      save(); return { data: { ok: true, mode: 'test', audience: n }, error: null }
+    }
     if (name === 'email-reset-password') {
       const db = load()
       if (body.action === 'done') {

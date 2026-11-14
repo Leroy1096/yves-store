@@ -171,7 +171,7 @@ function SignupForm({ onDone, switchTo, onHold }: { onDone: () => void; switchTo
         </label>
         <label className="flex cursor-pointer items-start gap-3 text-sm text-ink-600">
           <input type="checkbox" checked={f.newsletter} onChange={(e) => set('newsletter', e.target.checked)} className="mt-0.5 h-4 w-4 accent-[#0E0D0B]" />
-          Recevoir les offres et nouveautés YVES STORE.
+          Recevoir les nouveautés YVES STORE (e-mail / WhatsApp).
         </label>
       </div>
       <button disabled={loading} className="btn-gold w-full">{loading ? <><Loader2 size={17} className="animate-spin" /> Création du compte…</> : 'Créer mon compte'}</button>

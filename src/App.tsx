@@ -22,6 +22,7 @@ const Account = lazy(() => import('./pages/Account'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const ResetPassword = lazy(() => import('./pages/ResetPassword'))
 const AdminApp = lazy(() => import('./pages/admin/AdminApp'))
+const Unsubscribe = lazy(() => import('./pages/Unsubscribe'))
 
 function ScrollTop() {
   const { pathname } = useLocation()
@@ -52,6 +53,7 @@ export default function App() {
           <Route path="/compte" element={<Account />} />
           <Route path="/mon-compte" element={<Dashboard />} />
           <Route path="/reinitialiser" element={<ResetPassword />} />
+          <Route path="/desabonnement" element={<Unsubscribe />} />
           <Route path="/gerant/*" element={<AdminApp />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

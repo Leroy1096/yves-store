@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { ArrowDownToLine, ArrowUpFromLine, ClipboardCheck, Download, Loader2, PackagePlus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Img } from '../../components/ui'
@@ -32,6 +33,7 @@ export default function Stock({ onChange }: { onChange?: () => void }) {
   const [busy, setBusy] = useState(false)
   const [formErr, setFormErr] = useState('')
   const [okMsg, setOkMsg] = useState('')
+  const [newId, setNewId] = useState('')
   const [mode, setMode] = useState<'nouveau' | 'existant'>('nouveau')
   // Filtres
   const [q, setQ] = useState('')
@@ -106,8 +108,8 @@ export default function Stock({ onChange }: { onChange?: () => void }) {
             ))}
           </div>
           <p className="mt-2 text-xs text-ink-400">{mode === 'nouveau' ? 'Un article qui n’est pas encore sur le site : il sera mis en vente immédiatement. Vous pouvez aussi créer une nouvelle catégorie.' : 'Réassort, sortie ou inventaire d’un article déjà en vente.'}</p>
-          {okMsg && mode === 'nouveau' && <p className="mt-3 rounded-lg bg-emerald-50 p-2.5 text-xs font-medium text-emerald-800">✓ {okMsg}</p>}
-          {mode === 'nouveau' && <NewProduct onCreated={(_row, msg) => { setOkMsg(msg); load(); onChange?.() }} />}
+          {okMsg && mode === 'nouveau' && <div className="mt-3 rounded-lg bg-emerald-50 p-2.5 text-xs font-medium text-emerald-800">✓ {okMsg}{newId && <Link to={`/gerant/nouveautes?produits=${encodeURIComponent(newId)}`} className="mt-2 flex w-fit items-center gap-1.5 rounded-lg bg-ink px-3 py-1.5 font-bold text-ivory" data-testid="announce-new">📣 Annoncer aux abonnés</Link>}</div>}
+          {mode === 'nouveau' && <NewProduct onCreated={(row, msg) => { setOkMsg(msg); setNewId(row.id); load(); onChange?.() }} />}
           {mode === 'existant' && <form onSubmit={submit} className="mt-4 space-y-4">
             <div>
               <label className="label" htmlFor="st-product">Article</label>

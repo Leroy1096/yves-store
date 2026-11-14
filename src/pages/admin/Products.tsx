@@ -1,4 +1,5 @@
-import { Check, EyeOff, Loader2, RotateCcw, Save } from 'lucide-react'
+import { Check, EyeOff, Loader2, Megaphone, RotateCcw, Save } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Img } from '../../components/ui'
 import { refreshCatalog } from '../../lib/catalog'
@@ -56,6 +57,11 @@ function ProductRow({ r, onSaved }: { r: CatalogRow; onSaved: (r: CatalogRow) =>
         <button onClick={() => save()} disabled={!dirty || !!busy} className={cn('inline-flex h-[38px] items-center gap-1.5 rounded-lg px-3.5 text-xs font-bold transition', dirty ? 'bg-ink text-ivory hover:bg-gold hover:text-ink' : ok ? 'bg-emerald-100 text-emerald-700' : 'bg-ivory-200 text-ink-400')}>
           {busy === 'save' ? <Loader2 size={14} className="animate-spin" /> : ok ? <Check size={14} /> : <Save size={14} />} {ok ? 'Enregistré' : 'Enregistrer'}
         </button>
+        {r.active && (
+          <Link to={`/gerant/nouveautes?produits=${encodeURIComponent(r.id)}`} className="inline-flex h-[38px] items-center gap-1.5 rounded-lg px-3 text-xs font-bold text-gold-dark ring-1 ring-gold/40 hover:bg-gold/10" title="Annoncer cet article aux abonnés (e-mail + WhatsApp)" data-testid={`announce-${r.id}`}>
+            <Megaphone size={14} /> Annoncer
+          </Link>
+        )}
         {r.active ? (
           <button onClick={() => save(false, 'toggle')} disabled={!!busy} className="inline-flex h-[38px] items-center gap-1.5 rounded-lg px-3 text-xs font-bold text-red-600 ring-1 ring-red-200 hover:bg-red-50">
             {busy === 'toggle' ? <Loader2 size={14} className="animate-spin" /> : <EyeOff size={14} />} Retirer

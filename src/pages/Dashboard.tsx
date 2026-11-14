@@ -205,7 +205,7 @@ function ProfileForm({ profile, authEmail }: { profile: Profile; authEmail?: str
         <p className="mt-4 text-xs text-ink-400">Elle sera pré-remplie automatiquement lors de vos prochaines commandes.</p>
       </fieldset>
       <label className="flex cursor-pointer items-center justify-between gap-4 rounded-3xl border border-ink/10 bg-white p-6">
-        <span><span className="block font-semibold">Newsletter & offres membres</span><span className="text-sm text-ink-500">Ventes privées, nouveautés, codes promo.</span></span>
+        <span><span className="block font-semibold">Recevoir les nouveautés</span><span className="text-sm text-ink-500">Nouveaux articles et résumé de la semaine, par e-mail et/ou WhatsApp (selon vos coordonnées).</span></span>
         <span className={cn('relative h-7 w-12 shrink-0 rounded-full transition', f.newsletter ? 'bg-gold' : 'bg-ink/15')}>
           <input type="checkbox" className="sr-only" checked={f.newsletter} onChange={(e) => setF({ ...f, newsletter: e.target.checked })} />
           <motion.span layout className={cn('absolute top-1 h-5 w-5 rounded-full bg-white shadow', f.newsletter ? 'right-1' : 'left-1')} />
