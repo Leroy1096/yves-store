@@ -41,7 +41,7 @@ export default function SearchBar({ compact = false }: { compact?: boolean }) {
   const go = (term: string) => {
     const t = term.trim() || trendingSearches[ph]
     const h = [t, ...history.filter((x) => x.toLowerCase() !== t.toLowerCase())].slice(0, 8)
-    setHistory(h); localStorage.setItem(HISTORY_KEY, JSON.stringify(h))
+    setHistory(h); try { localStorage.setItem(HISTORY_KEY, JSON.stringify(h)) } catch { /* stockage bloqué */ }
     setQ(''); setOpen(false)
     if (/black friday|promo|soldes/i.test(t)) nav('/boutique?promo=1')
     else nav(`/boutique?q=${encodeURIComponent(t)}`)
@@ -83,7 +83,7 @@ export default function SearchBar({ compact = false }: { compact?: boolean }) {
                   <div className="mb-4">
                     <div className="mb-2 flex items-center justify-between">
                       <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider"><History size={14} /> Recherches récentes</p>
-                      <button onClick={() => { setHistory([]); localStorage.removeItem(HISTORY_KEY) }} className="p-1 text-ink-400 hover:text-red-600" aria-label="Effacer l’historique"><Trash2 size={14} /></button>
+                      <button onClick={() => { setHistory([]); try { localStorage.removeItem(HISTORY_KEY) } catch { /* */ } }} className="p-1 text-ink-400 hover:text-red-600" aria-label="Effacer l’historique"><Trash2 size={14} /></button>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {history.map((h) => <button key={h} onClick={() => go(h)} className="rounded-full bg-ivory-200 px-3 py-1.5 text-xs hover:bg-ink hover:text-ivory">{h}</button>)}

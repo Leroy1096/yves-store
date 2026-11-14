@@ -109,7 +109,7 @@ export default function Floating({ raised = false, bottomNav = false }: { raised
   const ready = useAuth((s) => s.ready)
   const [top, setTop] = useState(false)
   const [gift, setGift] = useState(false)
-  const [prompt, setPrompt] = useState(() => !sessionStorage.getItem('yves-prompt-off'))
+  const [prompt, setPrompt] = useState(() => { try { return !sessionStorage.getItem('yves-prompt-off') } catch { return true } })
 
   useEffect(() => {
     const on = () => setTop(window.scrollY > 900)
@@ -118,7 +118,7 @@ export default function Floating({ raised = false, bottomNav = false }: { raised
   }, [])
 
   const showPrompt = ready && !user && prompt
-  const closePrompt = () => { setPrompt(false); sessionStorage.setItem('yves-prompt-off', '1') }
+  const closePrompt = () => { setPrompt(false); try { sessionStorage.setItem('yves-prompt-off', '1') } catch { /* stockage bloqué */ } }
   const base = raised ? 'bottom-24 lg:bottom-6' : bottomNav ? (showPrompt ? 'bottom-[124px] lg:bottom-6' : 'bottom-[74px] lg:bottom-6') : 'bottom-6'
 
   return (
