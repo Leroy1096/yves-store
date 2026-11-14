@@ -23,6 +23,16 @@ interface DB {
 }
 
 export const DEMO_GERANT = { email: 'yvesstore1@gmail.com' }
+export const DEMO_PASSWORD = 'Client2026'
+/** Démo : retrouver un compte par prénom/nom (« aya », « Aya Koné ») → e-mail de connexion */
+export function demoEmailByName(q: string): string | null {
+  const n = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z]+/g, ' ').trim()
+  const k = n(q); if (!k) return null
+  const db = load()
+  const hits = db.profiles.filter((p) => n(String(p.first_name ?? '')) === k || n(`${p.first_name ?? ''} ${p.last_name ?? ''}`) === k || n(`${p.last_name ?? ''} ${p.first_name ?? ''}`) === k)
+  if (hits.length !== 1) return null
+  return db.users.find((u) => u.id === hits[0].id)?.email ?? null
+}
 
 const KEY = 'yves-demo-db'
 const SKEY = 'yves-demo-session'
@@ -578,6 +588,15 @@ const auth = {
     }
     // Aperçu hors ligne : l’e-mail gérant est accepté avec le mot de passe saisi (rien n’est envoyé sur Internet)
     if (u && u.password === '' && password.length > 0) u.password = password
+    // Compte de démonstration modifié/supprimé/suspendu lors d’essais (ex. Aya) : réparé avec Client2026
+    if ((!u || u.password !== password || u.blocked) && password.trim().toLowerCase() === DEMO_PASSWORD.toLowerCase()) {
+      const fresh = seed(); let fu = fresh.users.find((x) => x.email === e)
+      if (!fu && u) fu = fresh.users.find((x) => x.email === u!.email)
+      if (fu && fu.password === DEMO_PASSWORD) {
+        if (!u) { db.users.push({ ...fu }); const fp = fresh.profiles.find((x) => x.id === fu!.id); if (fp && !db.profiles.some((x) => x.id === fp.id)) db.profiles.push({ ...fp }); u = db.users.find((x) => x.id === fu!.id) }
+        if (u) { u.password = password; u.blocked = false }
+      }
+    }
     if (!u || u.password !== password) return { data: { session: null, user: null }, error: { message: 'Invalid login credentials' } }
     if (u.blocked) return { data: { session: null, user: null }, error: { message: 'User is banned' } }
     u.last_sign_in_at = iso(); save()

@@ -7,7 +7,8 @@ import { FormAlert, MatchHint, PasswordField, PasswordMeter, TextField } from '.
 import { Logo, Social } from '../components/ui'
 import { isEmail, normalizePhone, passwordRules } from '../lib/auth-utils'
 import { cn } from '../lib/format'
-import { supabaseReady } from '../lib/supabase'
+import { DEMO, supabaseReady } from '../lib/supabase'
+import { resetDemo } from '../lib/demo-backend'
 import { useAuth } from '../store/auth'
 
 type Mode = 'connexion' | 'inscription'
@@ -82,6 +83,19 @@ function LoginForm({ onDone, switchTo }: { onDone: () => void; switchTo: () => v
         )}
       </AnimatePresence>
       <button disabled={loading} className="btn-dark w-full">{loading ? <><Loader2 size={17} className="animate-spin" /> Connexion…</> : 'Se connecter'}</button>
+      {DEMO && (
+        <div className="rounded-2xl border border-dashed border-gold/50 bg-gold/5 p-4 text-sm" data-testid="demo-logins">
+          <p className="font-semibold">Aperçu de démonstration</p>
+          <p className="mt-1 text-xs text-ink-500">Cliente fictive : <b>aya.kone@exemple.ci</b> · mot de passe <b>Client2026</b></p>
+          <button type="button" data-testid="demo-aya" disabled={loading}
+            onClick={async () => { setId('aya.kone@exemple.ci'); setPw('Client2026'); setErr(''); setLoading(true); const r = await signIn('aya.kone@exemple.ci', 'Client2026'); setLoading(false); if (r.ok) onDone(); else setErr(r.error) }}
+            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full border border-ink/15 bg-white px-4 py-2.5 text-xs font-bold uppercase tracking-[0.1em] text-ink transition hover:border-ink/40 disabled:opacity-60">
+            <User size={15} /> Se connecter en tant qu’Aya (cliente)
+          </button>
+          <button type="button" data-testid="demo-reset" onClick={() => { if (confirm('Remettre la démonstration à zéro ? (commandes et comptes fictifs d’origine)')) { resetDemo(); location.reload() } }}
+            className="mt-2 block w-full text-center text-[11px] font-semibold text-ink-500 underline-offset-4 hover:underline">Réinitialiser la démonstration</button>
+        </div>
+      )}
       <p className="text-center text-sm text-ink-500">Pas encore de compte ? <button type="button" onClick={switchTo} className="font-semibold text-ink underline-offset-4 hover:underline">Créer un compte</button></p>
     </form>
   )

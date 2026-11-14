@@ -1,7 +1,8 @@
 import type { Session, User } from '@supabase/supabase-js'
 import { create } from 'zustand'
 import { identifierToAuthEmail, isEmail, normalizePhone, phoneToAuthEmail, translateAuthError } from '../lib/auth-utils'
-import { supabase, supabaseReady } from '../lib/supabase'
+import { DEMO, supabase, supabaseReady } from '../lib/supabase'
+import { demoEmailByName } from '../lib/demo-backend'
 
 export interface Profile {
   id: string
@@ -126,7 +127,9 @@ export const useAuth = create<AuthState>()((set, get) => ({
 
   signIn: async (identifier, password) => {
     if (!supabaseReady) return { ok: false, error: 'Service de comptes non configuré.' }
-    const r = identifierToAuthEmail(identifier)
+    let r = identifierToAuthEmail(identifier)
+    // Aperçu démo : « aya » ou « Aya Koné » acceptés comme identifiant
+    if ('error' in r && DEMO) { const em = demoEmailByName(identifier); if (em) r = { email: em } }
     if ('error' in r) return { ok: false, error: r.error }
     let { error } = await supabase.auth.signInWithPassword({ email: r.email, password })
     // Espace ajouté par le clavier du téléphone (auto-complétion) : on réessaie sans
