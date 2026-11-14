@@ -60,7 +60,7 @@ export default function PriceOptionsEditor({ r, onSaved, onClose }: { r: Catalog
   const v = validate(); const range = typeof v === 'string' ? null : v.reduce((a, g) => ({ min: a.min + Math.min(...g.choices.map((c) => c.delta)), max: a.max + Math.max(...g.choices.map((c) => c.delta)) }), { min: r.price, max: r.price })
 
   return (
-    <div className="rounded-2xl border border-gold/40 bg-gold/5 p-4 sm:col-span-3" data-testid="price-options-editor">
+    <div className="rounded-2xl border border-gold/40 bg-gold/5 p-4 sm:col-span-2" data-testid="price-options-editor">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="font-semibold">Prix par option — {r.name}</p>

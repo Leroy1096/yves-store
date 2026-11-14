@@ -39,8 +39,8 @@ function ProductRow({ r, onSaved }: { r: CatalogRow; onSaved: (r: CatalogRow) =>
   }
 
   return (
-    <div className={cn('grid items-center gap-3 rounded-2xl border bg-white p-3 sm:grid-cols-[56px_1fr_auto] sm:p-4', r.active ? 'border-ink/10' : 'border-dashed border-ink/20 bg-ivory-100 opacity-80')}>
-      {info ? <Img src={info.images[0]} alt="" className={cn('hidden h-16 w-14 rounded-lg object-cover sm:block', !r.active && 'grayscale')} /> : <span className="hidden h-16 w-14 rounded-lg bg-ivory-200 sm:block" />}
+    <div className={cn('grid items-start gap-x-4 gap-y-3 rounded-2xl border bg-white p-3 sm:grid-cols-[56px_minmax(0,1fr)] sm:p-4', r.active ? 'border-ink/10' : 'border-dashed border-ink/20 bg-ivory-100 opacity-80')}>
+      {info ? <Img src={info.images[0]} alt="" className={cn('hidden h-16 w-14 rounded-lg object-cover sm:row-span-2 sm:block', !r.active && 'grayscale')} /> : <span className="hidden h-16 w-14 rounded-lg bg-ivory-200 sm:row-span-2 sm:block" />}
       <div className="min-w-0">
         <p className="flex flex-wrap items-center gap-2 font-semibold">
           {r.name}
@@ -53,7 +53,7 @@ function ProductRow({ r, onSaved }: { r: CatalogRow; onSaved: (r: CatalogRow) =>
         {err && <p className="mt-1 text-xs font-medium text-red-600">{err}</p>}
         {p !== null && p < r.price && p >= 100 && <p className="mt-1 text-xs font-medium text-emerald-700">Baisse de prix : le badge « Nouveau prix » s’affichera {NEW_PRICE_DAYS} jours sur le site.</p>}
       </div>
-      <div className="flex flex-wrap items-end gap-2">
+      <div className="flex min-w-0 flex-wrap items-end gap-2 sm:col-start-2">
         <label className="block">
           <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-ink-400">Prix de vente</span>
           <div className="relative"><input value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ''))} inputMode="numeric" className="w-28 rounded-lg border border-ink/15 py-2 pl-3 pr-11 text-sm font-semibold tabular-nums outline-none focus:border-gold" aria-label={`Prix de ${r.name}`} /><span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-ink-400">FCFA</span></div>
