@@ -1,4 +1,5 @@
-import { MapPin, Phone, Mail, Clock, Loader2 } from 'lucide-react'
+import { MapPin, Phone, Mail, Clock, Loader2, Smartphone } from 'lucide-react'
+import { Capacitor } from '@capacitor/core'
 import { useState } from 'react'
 import { PHONE_DISPLAY, PHONE_TEL, WA_CLIENT_LINK } from '../lib/contact'
 import { subscribeNews } from '../lib/news'
@@ -46,6 +47,9 @@ function NewsForm() {
   )
 }
 
+/** Dernière version de l’appli Android (publiée automatiquement par GitHub Actions) */
+const APK_URL = 'https://github.com/Leroy1096/yves-store/releases/latest/download/YVES-STORE.apk'
+
 /** Réseaux sociaux : renseignez l’adresse de chaque page (vide = icône masquée, pas de lien mort) */
 const SOCIALS = [
   { I: Social.Instagram, url: '', label: 'Instagram' },
@@ -84,7 +88,7 @@ export default function Footer() {
         <div>
           <p className="eyebrow mb-4">Aide</p>
           <ul className="space-y-2.5 text-sm text-ivory/70">
-            <li><Link to="/conditions#livraison" className="hover:text-gold-light">Livraison & délais</Link></li><li><Link to="/conditions#retours" className="hover:text-gold-light">Retours sous 7 jours</Link></li><li><Link to="/conditions#paiement" className="hover:text-gold-light">Paiement</Link></li><li><Link to="/favoris" className="hover:text-gold-light">Mes favoris</Link></li>
+            <li><Link to="/conditions#livraison" className="hover:text-gold-light">Livraison & délais</Link></li><li><Link to="/conditions#retours" className="hover:text-gold-light">Retours sous 7 jours</Link></li><li><Link to="/conditions#paiement" className="hover:text-gold-light">Paiement</Link></li><li><Link to="/favoris" className="hover:text-gold-light">Mes favoris</Link></li>{!Capacitor.isNativePlatform() && <li><a href={APK_URL} className="inline-flex items-center gap-1.5 text-gold-light hover:text-gold" data-testid="apk-download"><Smartphone size={14} />Télécharger l’appli Android</a></li>}
           </ul>
         </div>
         <div>
